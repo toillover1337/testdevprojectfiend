@@ -480,7 +480,6 @@
     <button class="qbtn" onclick="quickCmd('history')">save</button>
     <button class="qbtn" onclick="quickCmd('help')">help</button>
     <button class="qbtn qbtn-warn" onclick="confirmExitToMenu()">exit to menu</button>
-    <button class="qbtn qbtn-warn" onclick="restartGame()">restart</button>
   </div>
   <div class="quick-btns" id="context-btns"></div>
   <div id="input-area">
@@ -4397,6 +4396,7 @@ function useDrug(drugKey, itemName) {
 // ═══════════════════════════════════════════════
 async function triggerDeath(fromJail=false, cause='') {
   G.gameOver = true;
+  refreshContextButtons();
 
   if (!fromJail) {
     if (cause === 'fentanyl') {
@@ -11682,6 +11682,7 @@ function checkSTDTimer() {
 
 async function triggerSTDDeath() {
   G.gameOver = true;
+  refreshContextButtons();
   printBlank();
   printDiv();
   print(`You're walking down the street when you notice something feels off.`, 'narration');
@@ -12703,7 +12704,16 @@ function refreshContextButtons() {
   const container = document.getElementById('context-btns');
   if (!container) return;
   container.innerHTML = '';
-  if (!G.playerName || G.gameOver) return; // not in an active game
+  if (!G.playerName) return; // not in an active game
+  if (G.gameOver) {
+    // Death/epilogue sequence — only a quick restart makes sense here
+    const btn = document.createElement('button');
+    btn.className = 'qbtn qbtn-warn';
+    btn.textContent = 'restart';
+    btn.onclick = () => restartGame();
+    container.appendChild(btn);
+    return;
+  }
 
   const room = ROOMS[G.location];
   const buttons = []; // {label, cmd}
