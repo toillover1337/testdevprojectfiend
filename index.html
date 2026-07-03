@@ -316,6 +316,56 @@
   }
   #save-modal-close:hover { border-color: var(--amber-hi); color: var(--amber-hi); }
 
+  /* ── SAVED COMMANDS MODAL ── */
+  #commands-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.85);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+  }
+  #commands-modal.open { display: flex; }
+  #commands-modal-title {
+    color: var(--amber-hi);
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    letter-spacing: .1em;
+  }
+  #commands-modal p {
+    color: var(--text-dim);
+    font-size: 12px;
+    text-align: center;
+    max-width: 520px;
+  }
+  #commands-modal p code {
+    color: var(--amber-dim);
+  }
+  #commands-list {
+    max-width: 560px;
+    justify-content: center;
+  }
+  #commands-list .qbtn-empty {
+    color: var(--text-dim);
+    font-size: 12px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  #commands-modal-close {
+    background: none;
+    border: 1px solid var(--amber-dim);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 7px 28px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  #commands-modal-close:hover { border-color: var(--amber-hi); color: var(--amber-hi); }
+
   /* Scan line overlay */
   body::after {
     content: '';
@@ -405,6 +455,14 @@
   <button id="save-modal-close" onclick="closeSaveModal()">[ CLOSE ]</button>
 </div>
 
+<!-- SAVED COMMANDS MODAL -->
+<div id="commands-modal">
+  <div id="commands-modal-title">[ SAVED COMMANDS ]</div>
+  <p>Click one to run it. Save a new one any time with <code>savecmd [label]</code> — it saves whatever you just typed.</p>
+  <div id="commands-list" class="quick-btns"></div>
+  <button id="commands-modal-close" onclick="closeCommandsModal()">[ CLOSE ]</button>
+</div>
+
 <!-- GAME SCREEN -->
 <div id="game-screen">
   <div id="status-bar">
@@ -418,9 +476,11 @@
     <button class="qbtn" onclick="quickCmd('where')">where</button>
     <button class="qbtn" onclick="quickCmd('status')">status</button>
     <button class="qbtn" onclick="quickCmd('inventory')">inventory</button>
-    <button class="qbtn" onclick="quickCmd('history')">save log</button>
+    <button class="qbtn" onclick="openCommandsModal()">commands</button>
+    <button class="qbtn" onclick="quickCmd('history')">save</button>
     <button class="qbtn" onclick="quickCmd('help')">help</button>
-    <button class="qbtn qbtn-warn" onclick="confirmExitToMenu()">exit menu</button>
+    <button class="qbtn qbtn-warn" onclick="confirmExitToMenu()">exit to menu</button>
+    <button class="qbtn qbtn-warn" onclick="restartGame()">restart</button>
   </div>
   <div class="quick-btns" id="context-btns"></div>
   <div id="input-area">
@@ -479,6 +539,8 @@ const G = {
   stash:       [],         // apartment safe storage (unlimited)
   bikeStorage: [],         // bike saddlebag (capped at BIKE_STORAGE_CAP capacity units)
   trashSearched: {},       // { [roomId]: lastGameMinutesSearched }
+  aliases:     {},         // { name: 'cmd1; cmd2' } — player-defined command shorthand
+  savedCmds:   {},         // { label: 'command string' } — saved command palette
 };
 
 // Movement time is context-dependent
@@ -4671,6 +4733,7 @@ function fullReset() {
   G.gameMinutes=0; G.needs={hunger:20,thirst:20,bladder:10,fatigue:15,craving:30};
   G.activeEffects={}; G.copWarnings=0; G.shopStock=null; barterSession=null; bjState=null; dialogueSession=null; combatState=null; G.playerHp=100; G.bleed=0; G.brokenArm=null; G.brokenLeg=null; G.painkillersActive=0; G.displayTime=0; G.startDate=null; G.gunMag=0; G.gunChambered=false; G.equippedWeapon=null; G.equippedArmor={head:null,body:null,legs:null,bag:null};
   G.stash=[]; G.bikeStorage=[]; G.trashSearched={};  // apartment stash / bike saddlebag / trash cooldowns
+  G.aliases={}; G.savedCmds={}; lastRealCommand='';
   Object.values(ROOMS).forEach(r=>r.firstVisit=true);
   ROOMS.apartment.items=['granola bar','lighter'];
   ROOMS.park.items=['discarded sandwich'];
@@ -4684,6 +4747,11 @@ function fullReset() {
 //  COMMAND HANDLER
 // ═══════════════════════════════════════════════
 function handleCommand(raw) {
+  // Exit-confirm must work even after the story ends (epilogue skip)
+  if (G.flags._pendingExitConfirm) {
+    const t0 = raw.trim();
+    if (t0 && handleExitConfirm(t0)) return;
+  }
   if (G.gameOver) { print(`The story is over. Refresh to start again.`,'system'); return; }
   const trimmed = raw.trim();
   if (!trimmed) return;
@@ -4694,12 +4762,85 @@ function handleCommand(raw) {
   if (!G.isReplaying) print('> '+trimmed,'player-cmd');
   else                 print('» '+trimmed,'replay');
 
+  // ── ALIAS / SAVED COMMAND SYSTEM ──────────────────────────
+  const lc = trimmed.toLowerCase();
+  const RESERVED_META = ['alias','unalias','aliases','savecmd','unsavecmd','commands'];
+  const DEV_CMD_NAMES = ['testfight','devgive','devlistnpc','devlistloc','devlistitem','debug','devgo','devhelp','devlistcmd','devskip','devbuff'];
+
+  // Define: alias name=command   (command may be quoted, may chain with ; or "then")
+  if (/^alias\s+\S+\s*=/i.test(trimmed)) {
+    const m = trimmed.match(/^alias\s+([a-zA-Z0-9_]+)\s*=\s*(.+)$/is);
+    if (!m) { print(`Usage: alias name=command. e.g. alias watjerk='drink water; eat jerky'`, 'system'); return; }
+    let name = m[1].toLowerCase();
+    let body = m[2].trim().replace(/^['"]|['"]$/g, '').trim();
+    if (!body) { print(`Alias needs a command to run.`, 'system'); return; }
+    if (RESERVED_META.includes(name) || Object.keys(VERBS).includes(name) || DEV_CMD_NAMES.includes(name)) {
+      print(`"${name}" is already a real command — pick a different alias name.`, 'system'); return;
+    }
+    G.aliases[name] = body;
+    logEvt('flag','aliases', JSON.stringify(G.aliases));
+    print(`Alias saved: "${name}" -> ${body}`, 'system');
+    return;
+  }
+  if (lc.startsWith('unalias ')) {
+    const name = lc.replace('unalias ','').trim();
+    if (G.aliases[name]) {
+      delete G.aliases[name];
+      logEvt('flag','aliases', JSON.stringify(G.aliases));
+      print(`Alias "${name}" removed.`, 'system');
+    } else {
+      print(`No alias called "${name}".`, 'system');
+    }
+    return;
+  }
+  if (lc === 'aliases' || lc === 'alias list' || lc === 'list aliases') {
+    const names = Object.keys(G.aliases);
+    if (!names.length) { print(`No aliases saved yet. Try: alias name=command`, 'system'); return; }
+    names.forEach(n => print(`  ${n} -> ${G.aliases[n]}`, 'system'));
+    return;
+  }
+  // Save your last command to the clickable command palette: savecmd label
+  if (lc.startsWith('savecmd ')) {
+    const label = trimmed.slice(8).trim();
+    if (!label) { print(`Usage: savecmd [label] — saves your last command under that label.`, 'system'); return; }
+    if (!lastRealCommand) { print(`Nothing to save yet — run a command first.`, 'system'); return; }
+    G.savedCmds[label.toLowerCase()] = lastRealCommand;
+    logEvt('flag','savedCmds', JSON.stringify(G.savedCmds));
+    print(`Saved "${lastRealCommand}" as "${label}". Open the commands menu to run it in one click.`, 'system');
+    return;
+  }
+  if (lc.startsWith('unsavecmd ')) {
+    const label = lc.replace('unsavecmd ','').trim();
+    if (G.savedCmds[label]) {
+      delete G.savedCmds[label];
+      logEvt('flag','savedCmds', JSON.stringify(G.savedCmds));
+      print(`Removed "${label}" from saved commands.`, 'system');
+    } else {
+      print(`No saved command called "${label}".`, 'system');
+    }
+    return;
+  }
+  if (lc === 'commands' || lc === 'saved commands') {
+    openCommandsModal();
+    return;
+  }
+  lastRealCommand = trimmed;
+
   const verb = parseVerb(trimmed);
   const obj  = verb ? parseObject(trimmed, verb) : trimmed.toLowerCase();
 
   if (!verb) {
     // Try intercepts first
     if (interceptSpecial(trimmed)) return;
+    // Alias execution — check before falling through to "I don't understand"
+    if (G.aliases[lc]) {
+      const parts = G.aliases[lc].split(/\s*;\s*|\s+then\s+/).map(s=>s.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (G.gameOver) break;
+        handleCommand(part);
+      }
+      return;
+    }
     const confused = [
       `That doesn't mean anything right now.`,
       `Your brain isn't firing on all cylinders. Try something simpler.`,
@@ -7229,6 +7370,27 @@ function cmdGive(obj) {
 }
 
 // ─── INVENTORY ────────────────────────────────
+// Diegetic capacity readout — bag flavor (relative size, no numbers) + how much room is left
+function carryCapacityProse() {
+  const bag = G.equippedArmor && G.equippedArmor.bag;
+  let bagLine;
+  if (!bag) bagLine = `You've just got your pockets.`;
+  else if (bag === 'backpack') bagLine = `You've got a backpack on — it helps a little.`;
+  else if (bag === 'duffel bag') bagLine = `You've got a duffel bag with you — you can carry a lot with this.`;
+  else bagLine = `You've got a ${bag} with you — it can hold a massive amount of stuff.`;
+
+  const used = getCarryUsed();
+  const max  = getCarryMax();
+  const frac = max > 0 ? used / max : 1;
+  let capLine;
+  if (frac >= 0.97)      capLine = `You're at your max. Nothing else is fitting in there.`;
+  else if (frac >= 0.75) capLine = `You can probably hold a bit more.`;
+  else if (frac >= 0.4)  capLine = `You've got some room left.`;
+  else                   capLine = `You can hold a lot more.`;
+
+  return `${bagLine} ${capLine}`;
+}
+
 function cmdInventory() {
   if (!G.inventory.length) { print(`Pockets empty. Carrying nothing. Broke.`); return; }
 
@@ -7247,9 +7409,12 @@ function cmdInventory() {
   });
 
   print(`Carrying: ` + displayParts.join(', ') + '.');
-  const used = getCarryUsed();
-  const max  = getCarryMax();
-  print(`Capacity: ${used.toFixed(1)} / ${max}${G.equippedArmor.bag ? ` [${G.equippedArmor.bag}]` : ' [pockets only]'}`, 'system');
+  print(carryCapacityProse());
+  if (G.flags.devMode) {
+    const used = getCarryUsed();
+    const max  = getCarryMax();
+    print(`[DEV] Capacity: ${used.toFixed(1)} / ${max}${G.equippedArmor.bag ? ` [${G.equippedArmor.bag}]` : ' [pockets only]'}`, 'system');
+  }
 }
 
 // ─── EXITS ────────────────────────────────────
@@ -7309,6 +7474,10 @@ function cmdHelp() {
   printBlank();
   print(`Examples: "go north"  "look around"  "talk to lou"  "take the cash"  "eat granola bar"`);
   printBlank();
+  print(`SHORTHAND: "alias name=command" makes "name" run that command — chain several with`);
+  print(`a semicolon, like alias watjerk='drink water; eat jerky'. "aliases" lists them, "unalias name" removes one.`);
+  print(`"savecmd label" saves your last command to the commands menu for one-click reuse.`);
+  printBlank();
   print(`SAVE: type "history" or click "save log". Copy the text and paste into a .txt file.`);
   print(`LOAD: from the main menu, choose Load Game and paste the log back in.`);
   printDiv();
@@ -7332,6 +7501,32 @@ function openSaveModal() {
 
 function closeSaveModal() {
   document.getElementById('save-modal').classList.remove('open');
+  document.getElementById('cmd-input').focus();
+}
+
+function openCommandsModal() {
+  const container = document.getElementById('commands-list');
+  container.innerHTML = '';
+  const labels = Object.keys(G.savedCmds || {});
+  if (!labels.length) {
+    const empty = document.createElement('div');
+    empty.className = 'qbtn-empty';
+    empty.textContent = 'Nothing saved yet. Run a command, then type "savecmd [label]".';
+    container.appendChild(empty);
+  } else {
+    labels.forEach(label => {
+      const btn = document.createElement('button');
+      btn.className = 'qbtn';
+      btn.textContent = `${label}  [ ${G.savedCmds[label]} ]`;
+      btn.onclick = () => { closeCommandsModal(); quickCmd(G.savedCmds[label]); };
+      container.appendChild(btn);
+    });
+  }
+  document.getElementById('commands-modal').classList.add('open');
+}
+
+function closeCommandsModal() {
+  document.getElementById('commands-modal').classList.remove('open');
   document.getElementById('cmd-input').focus();
 }
 
@@ -7861,6 +8056,8 @@ const BREAK_MULTS = {
 
 // Active combat session
 let combatState = null;
+let combatMenuMode = 'root'; // 'root' | 'target' | 'bodypart' | 'equip' — drives the staged combat hotbar
+let lastRealCommand = ''; // most recent non-meta command, used by "savecmd"
 /*
 combatState = {
   enemies: [
@@ -7991,15 +8188,27 @@ function startMultiCombat(enemyDefs, allyDefs, playerInitiated, surprise=false) 
   }
   printBlank();
 
+  // Diegetic gear read — what the player sees on each enemy, and what they themselves draw
+  combatState.enemies.forEach(e => {
+    const armorPieces = ['head','body','legs'].map(slot => e.equippedArmor && e.equippedArmor[slot]).filter(Boolean);
+    if (e.weapon === 'fists') {
+      print(`${e.name} isn't carrying a weapon — just fists.`, 'system');
+    } else {
+      print(`${e.name} is holding a ${displayWeaponName(e.weapon)}.`, 'system');
+    }
+    if (armorPieces.length) print(`  Wearing: ${armorPieces.join(', ')}.`, 'system');
+  });
+  const pw0 = getPlayerWeapon();
+  print(pw0 === 'fists' ? `You raise your fists.` : `You pull out your ${displayWeaponName(pw0)}.`, 'system');
+  printBlank();
+
   if (!playerInitiated && !surprise) {
     // Enemy attacks first — they jumped you
-    printCombatStatus();
     print(`They move first.`, 'system');
     printBlank();
     combatAllEnemyTurns();   // this prints status + options at the end
   } else {
     // Player goes first (initiated it, or surprise attack on enemy)
-    printCombatStatus();
     printCombatOptions();
   }
 }
@@ -8038,41 +8247,73 @@ function getNpcDodgeBonus(combatant) {
 }
 
 // ── COMBAT STATUS / OPTIONS ────────────────────────────────
+const ZONE_WOUND_FLAVOR = {
+  head:      'a cut over their eye',
+  body:      'holding their ribs',
+  left_arm:  'favoring their left arm',
+  right_arm: 'favoring their right arm',
+  left_leg:  'limping on their left leg',
+  right_leg: 'limping on their right leg',
+};
+
+function enemyConditionLine(e) {
+  const frac = e.maxHp ? e.hp / e.maxHp : 1;
+  const zoneFlavor = e.lastHitZone ? ZONE_WOUND_FLAVOR[e.lastHitZone] : null;
+  if (frac > 0.85)      return `${e.name} barely looks touched.`;
+  if (frac > 0.6)       return `${e.name}'s still in this, but you've landed something.`;
+  if (frac > 0.35)      return `${e.name} is hurting — ${zoneFlavor || 'moving stiffer than before'}.`;
+  if (frac > 0.12)      return `${e.name} is barely upright${zoneFlavor ? `, ${zoneFlavor}` : ''}.`;
+  return `${e.name} looks about to go down.`;
+}
+
+function allyConditionLine(a) {
+  const frac = a.maxHp ? a.hp / a.maxHp : 1;
+  if (a.isScripted) return `${a.name} isn't giving them an inch.`;
+  if (frac > 0.7)  return `${a.name} is holding their own.`;
+  if (frac > 0.4)  return `${a.name} is hurt but still fighting.`;
+  return `${a.name} is hanging on by a thread.`;
+}
+
 function printCombatStatus() {
   if (!combatState) return;
-  const playerCondition = combatState.playerHp > 70 ? 'on your feet' :
-                          combatState.playerHp > 40 ? 'hurting' :
-                          combatState.playerHp > 15 ? 'badly hurt' : 'barely standing';
-  print(`You are ${playerCondition}.`, 'system');
+  const playerCondition = combatState.playerHp > 85 ? `You feel fine.` :
+                          combatState.playerHp > 65 ? `You've taken a few hits, nothing serious yet.` :
+                          combatState.playerHp > 40 ? `You're hurting.` :
+                          combatState.playerHp > 15 ? `You're badly hurt.` : `You're barely standing.`;
+  print(playerCondition, 'system');
+  if (G.bleed >= 3) print(`You're bleeding out.`, 'failure');
+  else if (G.bleed === 2) print(`You're bleeding badly.`, 'failure');
+  else if (G.bleed === 1) print(`You're bleeding.`, 'failure');
+  if (G.brokenArm) print(`Your ${G.brokenArm} arm is broken.`, 'failure');
+  if (G.brokenLeg) print(`Your ${G.brokenLeg} leg is broken.`, 'failure');
 
-  // Enemies
-  combatState.enemies.forEach((e, i) => {
-    const cond = e.hp > 70 ? 'standing' : e.hp > 40 ? 'hurt' : e.hp > 15 ? 'badly hurt' : 'barely standing';
-    const targeted = combatState.enemies.length > 1 && combatState.playerTarget === i ? ' [targeted]' : '';
-    print(`  ${e.name}: ${cond}${targeted}`, 'system');
-  });
+  combatState.enemies.forEach(e => print(`  ${enemyConditionLine(e)}`, 'system'));
+  combatState.allies.forEach(a => print(`  ${allyConditionLine(a)}`, 'system'));
 
-  // Allies
-  combatState.allies.forEach(a => {
-    const cond = a.hp > 70 ? 'holding their own' : a.hp > 40 ? 'hurt' : 'hanging on';
-    print(`  ${a.name} (with you): ${cond}`, 'system');
-  });
+  // ── DEV READOUT (cheatercheaterpumpkineater only) — explicit numbers ──
+  if (G.flags.devMode) {
+    print(`[DEV] You: ${combatState.playerHp}/100 HP  Bleed:${G.bleed}  BrokenArm:${G.brokenArm||'none'}  BrokenLeg:${G.brokenLeg||'none'}`, 'system');
+    combatState.enemies.forEach((e,i) => print(`[DEV] Enemy ${i+1} ${e.name}: ${e.hp}/${e.maxHp} HP  Weapon:${e.weapon}  Armed:${e.armed}${e.lastHitZone?`  LastHit:${e.lastHitZone}`:''}${combatState.playerTarget===i?'  [targeted]':''}`, 'system'));
+    combatState.allies.forEach(a => print(`[DEV] Ally ${a.name}: ${a.hp}/${a.maxHp} HP  Weapon:${a.weapon}  Scripted:${a.isScripted}`, 'system'));
+  }
+}
+
+function combatWeaponFlavor(pw) {
+  if (pw === 'fists') return `You've got nothing but your hands.`;
+  return `You're gripping the ${displayWeaponName(pw)}.`;
 }
 
 function printCombatOptions() {
   if (!combatState) return;
+  combatMenuMode = 'root';
   const pw = getPlayerWeapon();
   const painActive = G.painkillersActive > G.gameMinutes;
   const armedLimb = (G.brokenArm && !painActive) ? ` [${G.brokenArm} arm broken]` : '';
 
-  // Show target selector only when multiple enemies remain
-  if (combatState.enemies.length > 1) {
-    const names = combatState.enemies.map((e,i) => `"target ${i+1}" (${e.name})`).join(' | ');
-    print(`Target: ${names}`, 'system');
-  }
-
-  print(`Attack: "hit body" | "hit head" | "hit left/right arm" | "hit left/right leg"`, 'system');
-  if (pw !== 'fists') print(`Weapon: ${displayWeaponName(pw)}${armedLimb}`, 'system');
+  printCombatStatus();
+  printBlank();
+  print(combatWeaponFlavor(pw), 'system');
+  if (G.flags.devMode) print(`[DEV] Weapon: ${pw}${combatState.enemies.length>1?`  Target: ${combatState.playerTarget+1} (${combatState.enemies[combatState.playerTarget]?.name})`:''}`, 'system');
 
   // Show hunger/thirst debuff if active — prose, no raw percentages
   const nd = getNeedDebuffs();
@@ -8091,23 +8332,25 @@ function printCombatOptions() {
   }
   if (baseWeaponName(pw) === 'blok19') {
     const total = G.gunMag + (G.gunChambered ? 1 : 0);
-    print(`Ammo: ${total} round${total===1?'':'s'} loaded. "reload" to top off.`, 'system');
+    print(`${total} round${total===1?'':'s'} left in the mag.`, 'system');
   }
   if (armedLimb) print(`Your weapon arm is broken. Attacks are weaker.`, 'system');
-  const otherWeapons = G.inventory.filter(i => {
-    const b = baseWeaponName(i);
-    return WEAPONS[b] && b !== 'fists' && i !== pw;
-  });
-  if (otherWeapons.length) {
-    print(`Also carrying: ${otherWeapons.map(displayWeaponName).join(', ')}. "equip [weapon]" to switch (costs your turn).`, 'system');
-  }
-  print(`Other: "run" to flee`, 'system');
+
+  refreshContextButtons();
 }
 
 // ── COMBAT INPUT ────────────────────────────────────────────
 function handleCombatInput(raw) {
   if (!combatState) return false;
   const r = raw.toLowerCase().trim();
+
+  // Free inventory / status check — no turn cost, doesn't trigger enemy turns
+  if (r === 'inventory' || r === 'inv' || r === 'check inventory' || r.startsWith('look at inventory')) {
+    cmdInventory(); return true;
+  }
+  if (r === 'status' || r === 'check status' || r === 'condition') {
+    cmdStatus(); return true;
+  }
 
   // Reload
   if (r.includes('reload') || r === 'rack slide') {
@@ -8133,6 +8376,7 @@ function handleCombatInput(raw) {
     if (!isNaN(idx) && idx >= 0 && idx < combatState.enemies.length) {
       combatState.playerTarget = idx;
       print(`You focus on ${combatState.enemies[idx].name}.`, 'system');
+      refreshContextButtons();
       return true;
     }
     // Try to match by name
@@ -8140,6 +8384,7 @@ function handleCombatInput(raw) {
     if (nameIdx >= 0) {
       combatState.playerTarget = nameIdx;
       print(`You focus on ${combatState.enemies[nameIdx].name}.`, 'system');
+      refreshContextButtons();
       return true;
     }
     print(`Can't find that target. Living enemies: ${combatState.enemies.map((e,i)=>`${i+1}: ${e.name}`).join(', ')}.`, 'system');
@@ -8162,7 +8407,7 @@ function handleCombatInput(raw) {
            r.includes('torso') || r.includes('stomach'))           target = 'body';
 
   if (!target) {
-    print(`Attack where? "hit body" | "hit head" | "hit left arm" | "hit right arm" | "hit left leg" | "hit right leg". Or "run".`, 'system');
+    print(`You can't do that right now — you're in the middle of getting the shit kicked out of you.`, 'system');
     return true;
   }
 
@@ -8239,6 +8484,7 @@ function combatRound(playerTarget) {
       const armorMult = 1.0 - getNpcArmorReduction(e, playerTarget);
       const scaledDmg = Math.floor(dmg * tMod.damageMult * pDmgMult * armorMult * needDeb.outDmg);
       e.hp = Math.max(0, e.hp - scaledDmg);
+      e.lastHitZone = playerTarget;
 
       const isArmTarget = playerTarget === 'left_arm' || playerTarget === 'right_arm';
       if (isArmTarget && e.armed && Math.random() < tMod.disarmChance) {
@@ -8363,7 +8609,6 @@ function combatAllEnemyTurns() {
   }
   if (!combatState) return;
   printBlank();
-  printCombatStatus();
   printCombatOptions();
 }
 
@@ -8634,8 +8879,11 @@ function cmdEquip(obj) {
     if (armorList.length) print(`Wearing/carrying: ${armorList.join(', ')}.`, 'system');
     const carried = G.inventory.filter(i => WEAPONS[baseWeaponName(i)] && baseWeaponName(i) !== 'fists');
     print(`[ Carrying: ${carried.length ? carried.map(displayWeaponName).join(', ') : 'nothing but your fists'} ]`, 'system');
-    const used = getCarryUsed(); const max = getCarryMax();
-    print(`[ Capacity: ${used.toFixed(1)} / ${max} ]`, 'system');
+    print(carryCapacityProse());
+    if (G.flags.devMode) {
+      const used = getCarryUsed(); const max = getCarryMax();
+      print(`[DEV] Capacity: ${used.toFixed(1)} / ${max}`, 'system');
+    }
     return;
   }
 
@@ -8956,6 +9204,7 @@ function combatFlee() {
     print(`You break away and run. Nobody follows, or they can't.`);
     adjustKarma(combatState.karmaChange);
     combatState = null;
+    refreshContextButtons();
     printBlank();
   } else {
     print(`You try to run. They catch you before you make it.`, 'failure');
@@ -8967,7 +9216,6 @@ function combatFlee() {
       print(buildAttackProse(e.weapon, 'body', true, combatState.playerHp<=0?'killing':'hitting', 'you', e.name));
       if (combatState.playerHp <= 0) { combatEnd('enemy_killed_player'); return; }
     }
-    printCombatStatus();
     printCombatOptions();
   }
 }
@@ -9003,6 +9251,7 @@ async function combatEnd(result) {
   } else if (result === 'enemy_killed_player') {
     adjustKarma(karma);
     combatState = null;
+    refreshContextButtons();
     printBlank();
     triggerDeath(false, 'combat');
     return;
@@ -9014,6 +9263,7 @@ async function combatEnd(result) {
   adjustKarma(karma);
   logEvt('karma', G.karma);
   combatState = null;
+  refreshContextButtons();
   printBlank();
   printDiv();
 
@@ -10668,6 +10918,12 @@ function handleNoiseComplaintAtEarl() {
   if (G.flags.policeMissionActive !== 'noise' || G.flags.noiseResolved) return false;
   // Extra guard: if bribe was already paid, block re-entry entirely
   if (G.flags.earlBribePaid) return false;
+  // The "noise" is the still running — that only happens at the camp at night.
+  // Finding Earl at the trailer park during the day shouldn't let you resolve this.
+  if (!isEarlAtCamp()) {
+    print(`Nothing's running back here right now. Whatever Hed's hearing about, it's not happening in broad daylight.`);
+    return false;
+  }
 
   openDialogue('earl', `Earl looks at you different this time — wary. "You're not here for a drink, are you."`, [
     { label: "Tell him you're here about the noise complaint", action: () => {
@@ -12371,7 +12627,79 @@ function quickCmd(cmd) {
 // ═══════════════════════════════════════════════
 // Decides which situational buttons to show based on current room and
 // need/health severity. Called after every updateStatus().
+// Builds the contextual hotbar while combatState is active. Staged menu:
+// root -> [attack, equip, reload, run]  (the always-visible static bar already covers inventory/status)
+//   attack -> target buttons (if >1 enemy) -> body-part buttons -> submits "hit X"
+//   equip  -> one button per carried weapon (argument baked in) -> submits "equip X"
+function renderCombatButtons() {
+  const container = document.getElementById('context-btns');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!combatState) { combatMenuMode = 'root'; return; }
+
+  const pw = getPlayerWeapon();
+  const buttons = []; // {label, cmd} to submit, or {label, action} for pure UI navigation
+
+  if (combatMenuMode === 'target') {
+    combatState.enemies.forEach((e, i) => {
+      buttons.push({ label: e.name, action: () => {
+        cmdInput.value = `hit ${e.name} ▸`;
+        quickCmd(`target ${i+1}`);
+        combatMenuMode = 'bodypart';
+        renderCombatButtons();
+      }});
+    });
+    buttons.push({ label: '< back', action: () => { combatMenuMode = 'root'; cmdInput.value=''; renderCombatButtons(); } });
+
+  } else if (combatMenuMode === 'bodypart') {
+    [['body','body'],['head','head'],['left arm','left arm'],['right arm','right arm'],['left leg','left leg'],['right leg','right leg']]
+      .forEach(([label, part]) => buttons.push({ label, cmd: `hit ${part}` }));
+    buttons.push({ label: '< back', action: () => { combatMenuMode = 'root'; cmdInput.value=''; renderCombatButtons(); } });
+
+  } else if (combatMenuMode === 'equip') {
+    const otherWeapons = G.inventory.filter(i => {
+      const b = baseWeaponName(i);
+      return WEAPONS[b] && b !== 'fists' && i !== pw;
+    });
+    for (const w of otherWeapons) buttons.push({ label: displayWeaponName(w), cmd: `equip ${w}` });
+    if (pw !== 'fists') buttons.push({ label: 'go unarmed', cmd: 'equip fists' });
+    buttons.push({ label: '< back', action: () => { combatMenuMode = 'root'; cmdInput.value=''; renderCombatButtons(); } });
+
+  } else { // root
+    buttons.push({ label: 'attack', action: () => {
+      cmdInput.value = 'hit ▸';
+      combatMenuMode = (combatState.enemies.length > 1) ? 'target' : 'bodypart';
+      renderCombatButtons();
+    }});
+    const otherWeapons = G.inventory.filter(i => {
+      const b = baseWeaponName(i);
+      return WEAPONS[b] && b !== 'fists' && i !== pw;
+    });
+    if (otherWeapons.length || pw !== 'fists') {
+      buttons.push({ label: 'equip', action: () => {
+        cmdInput.value = 'equip ▸';
+        combatMenuMode = 'equip';
+        renderCombatButtons();
+      }});
+    }
+    if (baseWeaponName(pw) === 'blok19') {
+      const total = G.gunMag + (G.gunChambered ? 1 : 0);
+      if (total < MAG_CAPACITY + 1) buttons.push({ label: 'reload', cmd: 'reload' });
+    }
+    buttons.push({ label: 'run', cmd: 'run' });
+  }
+
+  for (const b of buttons) {
+    const btn = document.createElement('button');
+    btn.className = 'qbtn';
+    btn.textContent = b.label;
+    btn.onclick = b.action || (() => quickCmd(b.cmd));
+    container.appendChild(btn);
+  }
+}
+
 function refreshContextButtons() {
+  if (combatState) { renderCombatButtons(); return; }
   const container = document.getElementById('context-btns');
   if (!container) return;
   container.innerHTML = '';
@@ -12441,6 +12769,15 @@ function refreshContextButtons() {
     buttons.push({ label: 'ticket', cmd: 'ticket' });
   }
 
+  // Ride bus — at a bus stop, one button per other zone
+  const BUS_STOPS = { bus_stop_downtown: 'downtown', bus_stop_district: 'district', bus_stop_sticks: 'sticks' };
+  if (BUS_STOPS[G.location]) {
+    const hereZone = BUS_STOPS[G.location];
+    ['downtown','district','sticks'].filter(z => z !== hereZone).forEach(z => {
+      buttons.push({ label: `bus to ${z}`, cmd: `ride bus to ${z}` });
+    });
+  }
+
   // Poke cat — she's asleep in the alley
   if (G.location === 'alley' && typeof isCatAsleep === 'function' && isCatAsleep()) {
     buttons.push({ label: 'poke', cmd: 'poke cat' });
@@ -12459,6 +12796,12 @@ function refreshContextButtons() {
 function confirmExitToMenu() {
   print(`Exit to the main menu? Unsaved progress will be lost. Type "y" to confirm, "n" to cancel.`, 'system');
   G.flags._pendingExitConfirm = true;
+}
+
+// Same destination as exit-to-menu, but immediate — no y/n prompt.
+function restartGame() {
+  G.flags._pendingExitConfirm = false;
+  fullReset();
 }
 
 function handleExitConfirm(raw) {
@@ -12487,6 +12830,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const modal = document.getElementById('save-modal');
     if (modal.classList.contains('open')) closeSaveModal();
+    const cmdModal = document.getElementById('commands-modal');
+    if (cmdModal.classList.contains('open')) closeCommandsModal();
   }
 });
 
