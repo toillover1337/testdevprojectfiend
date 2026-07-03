@@ -207,6 +207,7 @@
 
   .line { line-height: 1.65; }
   .line.room-title { color: var(--amber-hi); font-family: 'VT323', monospace; font-size: 20px; margin-top: 10px; }
+  .line.subheading { color: #deaf4e; font-weight: normal; margin-top: 6px; }
   .line.narration { color: var(--text); }
   .line.player-cmd { color: var(--amber-dim); }
   .line.player-cmd::before { content: '> '; }
@@ -558,8 +559,20 @@ function isEarlAtCamp() {
   const h = getGameHour();
   return h >= 20 || h < 6;
 }
-
+function isEarlAtBar() {
+  const h = getGameHour();
+  return h >= 11 && h < 17;
+}
 function getEarlLocation() {
+  if (G.flags.earlJailed) return 'jail_cells';
+  if (isEarlAtCamp()) return 'moonshiner_camp';
+  if (isEarlAtBar()) return 'bar';
+  return 'trailer_park'; // morning (6-11) and evening (17-20)
+}
+// Cuz sticks close to the trailer park — Earl won't take him along to the bar
+// ("embarrasses him," per Cuz). Only actually with Earl at the camp at night.
+function getCuzLocation() {
+  if (G.flags.earlJailed) return 'trailer_park';
   return isEarlAtCamp() ? 'moonshiner_camp' : 'trailer_park';
 }
 
@@ -582,7 +595,7 @@ function getMoveCost(fromKey, destKey) {
   const district = ['district','police_station','courthouse','clinic','post_office_exterior',
                     'schoolhouse','park','petting_zoo','park_lake','church','nightclub','fenix_alley'];
   const sticks   = ['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
-                    'sneeds','cult_camp','schoolhouse','reservoir',
+                    'sneeds','cult_camp','reservoir',
                     'body_location','creek','woods_lake'];
 
   const fromDowntown = downtown.includes(fromKey);
@@ -721,7 +734,8 @@ const VERBS = {
   go:        ['go','walk','move','travel','head','run','enter','climb','go to','head to','walk to'],
   exit:      ['exit','leave','go outside','get out','out','outside','back'],
   take:      ['take','get','grab','pick','pickup','pick up','snag','steal','swipe','lift','pocket'],
-  drop:      ['drop','discard','put down','throw','toss'],
+  drop:      ['drop','discard','put down'],
+  toss:      ['toss','throw away','throw out'],
   use:       ['use','apply','activate','open','unlock','light','smoke','shoot',
               'inject','drink','eat','read','try','attempt','swallow','pop','snort','shoot up',
               'bandage','heal','treat','patch','wrap'],
@@ -913,7 +927,7 @@ ${G.flags.knocked4i ? 'Nobody answered. The wind chime kept going.' : 'You can k
     desc: () => `Main Street, Los Ciegos. The commercial heart of a town that uses the word
 heart loosely. Sun-bleached storefronts, dust, and asphalt.
 Here: the diner, the bar, the alley, Wally's Gas, the pawn shop, the pharmacy,
-the laundromat, and the motel.
+the laundromat, and the motel. A guy named Gerald sits on the bench near the corner, same as always.
 ${G.flags.hasCar ? 'Your motorbike is parked nearby.' : 'The bus stop is on the corner.'}
 A few blocks away is the District — the park, the church, the nightclub, and the civic buildings are over there.
 The sticks are accessible by bus. Your apartment building is next to the diner — "go home" to head up.
@@ -984,7 +998,8 @@ ${describeCatInRoom()}`,
     desc: () => `A sad park with a broken fountain, three dying trees, and a bench where a woman
 sits pushing an empty stroller. A kid is trying to fly a kite without wind.
 In the far corner, a cluster of tents has been there long enough that the grass underneath is gone.
-${trashBinDesc('park')}`,
+${trashBinDesc('park')}
+${getRoomParkingFlavor('park')}`,
     exits: { east: 'district', camp: 'homeless_camp', 'homeless camp': 'homeless_camp', commons: 'homeless_camp' },
     items: ['discarded sandwich'], npcs: ['park_woman','kite_kid'],
   },
@@ -1086,8 +1101,9 @@ poster ("HANG IN THERE") that is deeply ironic in context. The third has a toile
 constantly, like a small waterfall of institutional defeat.
 ${G.flags.inJail
   ? `You are in cell ${G.flags.jailCell||2}. Sheriff Hed is visible through the door, still eating.`
+  : G.flags.earlJailed ? `Earl's in the far cell, sitting on the bunk with his elbows on his knees. He doesn't look up right away.`
   : 'The cells are empty right now. The toilet still runs.'}`,
-    exits: { out: 'police_station' }, items: [], npcs: [],
+    exits: { out: 'police_station' }, items: [], npcs: ['earl'],
   },
 
   // ── TRAP HOUSE ─────────────────────────────
@@ -1124,10 +1140,12 @@ ${G.flags.knowsPassword ? `There is a door to the side with a sliding peephole. 
   : `There is a door to the side with a sliding peephole. It is closed.`}
 ${G.flags.policeMissionActive === 'arrest' && !G.flags.arrestTargetFound
   ? `The bar's about half full. A nervous-looking guy at the far end is nursing something brown and watching the door more than his drink.`
-  : `A few patrons nurse their drinks.`} The bathroom is in back.
+  : `A few patrons nurse their drinks. A sad-looking guy hunches over the bar by himself, staring at nothing in particular.`}
+${isEarlAtBar() ? (G.flags.metEarl ? `Earl's a few stools down, working on a beer.` : `A redneck-looking guy is parked a few stools down, working on a beer like it owes him money.`) : ''} The bathroom is in back.
+${G.flags.bustInvestigationStarted && !G.flags.evidence_witness && !G.flags.bustReady ? `A guy near the end of the bar won't quite look at the door. He's seen something. He might talk for the price of a drink.` : ''}
 ${trashBinDesc('bar')}`,
     exits: { southeast: 'downtown', bathroom: 'bar_bathroom', 'side door': 'speakeasy_door' },
-    items: [], npcs: ['rosario', 'drunk_earl', 'bar_patron_1', 'bar_patron_2', 'dale'],
+    items: [], npcs: ['rosario', 'earl', 'bar_patron_1', 'bar_patron_2', 'dale'],
   },
 
   bar_bathroom: {
@@ -1206,7 +1224,8 @@ than the government takes Los Ciegos. One courtroom, one clerk's office, a hallw
 water fountain that runs warm. The clerk is at the desk with the expression of someone who
 has read everything in this building twice and found it wanting.
 A small records window is set into the wall next to the desk.
-${G.flags.communeFlag ? 'The plaque outside has your name on it.' : ''}`,
+${G.flags.communeFlag ? 'The plaque outside has your name on it.' : ''}
+${G.flags.bustInvestigationStarted && !G.flags.evidence_financial && !G.flags.bustReady ? `\nThe clerk looks like the type who'd pull a business filing for the right "processing fee."` : ''}`,
     exits: {}, items: [], npcs: ['courthouse_clerk'],
   },
 
@@ -1248,8 +1267,8 @@ Chemistry supplies are technically available here because they are technically l
     firstVisit: true, safeSleep: false, safeBathroom: true,
     desc: () => `A nightclub that operates on the understanding that Los Ciegos deserves
 nightlife even if nobody asked. Neon, bass, and a door policy enforced by a man built
-like a filing cabinet. Inside: a bar, a dance floor, a DJ who is clearly overqualified,
-and in the back — La Señora's domain.
+like a filing cabinet. Inside: a bar — a bartender working it, unbothered, wiping the
+same glass — a dance floor, a DJ who is clearly overqualified, and in the back — La Señora's domain.
 ${G.flags.gangTier >= 1 ? 'The bouncer nods when he sees you. You are expected.' : ''}
 ${trashBinDesc('nightclub')}
 There's a back exit to the alley behind the building.`,
@@ -1283,10 +1302,11 @@ ${trashBinDesc('fenix_alley')}`;
     firstVisit: true, safeSleep: false, safeBathroom: false,
     desc: () => `The outskirts of Los Ciegos. Dust, scrub, and the kind of quiet that reminds you the town is small and the desert is large.
 From here you can reach: the auto shop, the trailer park, Sneed's Feed and Seed, the woods,
-the abandoned schoolhouse, and the reservoir further out.
+and the reservoir further out.
 The street is back the way you came.
 ${trashBinDesc('sticks')}`,
-    exits: {}, items: [], npcs: [],
+    exits: { auto_shop: 'auto_shop', trailer_park: 'trailer_park', sneeds: 'sneeds', woods: 'woods', reservoir: 'reservoir' },
+    items: [], npcs: [],
   },
 
   woods: {
@@ -1294,7 +1314,7 @@ ${trashBinDesc('sticks')}`,
     firstVisit: true, safeSleep: false, safeBathroom: false,
     desc: () => `A stand of pinon and juniper that counts as woods in New Mexico. Quiet. Dry.
 From here: the creek, the woods lake, the Brotherhood's compound deeper in. ${G.flags.foundBody ? '' : 'There is something on the ground further in — a clearing worth investigating.'}
-There's a trail off to the side that smells strongly of something chemical. Earl's operation is back there.
+${G.flags.knowsStillLocation ? "There's a trail off to the side that smells strongly of something chemical. Earl's operation is back there." : "There's a trail off to the side that smells faintly chemical. You're not sure where it leads."}
 The sticks are back the way you came.`,
     exits: { sticks: 'sticks', creek: 'creek', 'woods lake': 'woods_lake', compound: 'cult_camp', 'cult compound': 'cult_camp', clearing: 'body_location', "earl's operation": 'moonshiner_camp' },
     items: [], npcs: [],
@@ -1326,7 +1346,7 @@ ${G.flags.bikeAcquired ? 'Your bike is parked by the second bay, ready.' : G.fla
     desc: () => `Fourteen trailers arranged with the loose geometry of a place that grew
 without planning. Earl's is the one with the truck out front and the smell coming from
 the back. His cousin Cuz is usually around somewhere.
-${isEarlAtCamp() ? "Earl's truck is gone. His trailer is dark, lights off, curtains drawn. Where could they be off to so late?" : ''}
+${isEarlAtCamp() ? "Earl's truck is gone. His trailer is dark, lights off, curtains drawn. Where could they be off to so late?" : isEarlAtBar() ? "Earl's truck is gone. He's probably down at the bar — that's where he usually is around this time of day." : ''}
 ${trashBinDesc('trailer_park')}`,
     exits: {},
     items: [],
@@ -1397,8 +1417,6 @@ in the sense that the lock no longer works.
 ${G.flags.ghostQuestStarted ? 'The paranormal investigator is here with equipment.' : 'Inside: desks, old textbooks, the specific silence of a place that used to be loud.'}`,
     exits: {}, items: [], npcs: [],
   },
-
-  // ── RESERVOIR ──────────────────────────────
   reservoir: {
     name: "LOS CIEGOS RESERVOIR",
     firstVisit: true, safeSleep: false, safeBathroom: false,
@@ -1594,7 +1612,7 @@ function cmdExit() {
 
   // Intra-sticks exits bypass the bus gate — you're already out here
   const sticksRooms = ['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
-                       'sneeds','cult_camp','schoolhouse','reservoir',
+                       'sneeds','cult_camp','reservoir',
                        'body_location','creek','woods_lake'];
   const inSticks = sticksRooms.includes(G.location);
   const destInSticks = sticksRooms.includes(dest);
@@ -1647,7 +1665,6 @@ const NPCS = {
   deputy_hicks:       { name: 'Deputy Rodriguez' },
   chuy:               { name: 'Chuy' },
   rosario:            { name: 'Rosario' },
-  drunk_earl:         { name: 'Earl' },
   bar_patron_1:       { name: 'the woman at the end of the bar' },
   bar_patron_2:       { name: 'the guy in the booth' },
   dale:               { name: 'Dale' },
@@ -2006,13 +2023,16 @@ function canCarry(item) {
 }
 
 function printCarryWarning(item) {
-  const max  = getCarryMax();
-  const used = getCarryUsed();
-  print(`You're carrying too much to pick up the ${item}. (${used.toFixed(1)}/${max} capacity used)`, 'failure');
+  print(`You're carrying too much to pick up the ${item}.`, 'failure');
+  print(carryCapacityProse());
   if (!G.equippedArmor.bag) {
     print(`A backpack or duffel bag would give you a lot more room.`, 'system');
   } else {
     print(`You'd need to drop something or stash it at your apartment first.`, 'system');
+  }
+  if (G.flags.devMode) {
+    const max = getCarryMax(); const used = getCarryUsed();
+    print(`[DEV] ${used.toFixed(1)}/${max} capacity used`, 'system');
   }
 }
 
@@ -2475,6 +2495,22 @@ function printNpcDeadLine(npcKey) {
 }
 
 function cmdBarter(obj) {
+  // Every NPC's home location — also used below for reachability checks.
+  const npcLocations = {
+    marcus: 'gas_station', lou: 'diner',
+    alley_dealer: 'alley', chuy: 'trap_house',
+    ray: 'pawn_shop', rosario: 'bar',
+    sneed: 'sneeds', hector: 'auto_shop', earl: getEarlLocation(),
+    manny: 'fenix_alley',
+    town_pharmacist: 'pharmacy',
+    doris: 'doris_door', raymond: 'na_meeting',
+  };
+  // Reverse lookup: room -> the shop NPC found there (for bare "barter" with no name)
+  const locDefaults = {};
+  for (const [npc, loc] of Object.entries(npcLocations)) locDefaults[loc] = npc;
+  locDefaults.church = 'raymond'; // raymond is also reachable from church context
+  locDefaults.hallway = 'doris';
+
   // Find which NPC we're targeting
   const npcMap = {
     'marcus': 'marcus', 'cashier': 'marcus', 'attendant': 'marcus',
@@ -2497,11 +2533,6 @@ function cmdBarter(obj) {
     if (!obj || obj.includes(keyword) || obj === '') {
       // If no obj, pick default NPC for location
       if (!obj || obj === '') {
-        const locDefaults = {
-          gas_station: 'marcus', diner: 'lou', alley: 'dealer',
-          doris_door: 'doris', hallway: 'doris',
-          na_meeting: 'raymond', church: 'raymond',
-        };
         npcKey = locDefaults[G.location] || null;
         break;
       }
@@ -2523,15 +2554,6 @@ function cmdBarter(obj) {
   if (!shop) { print(`They don't trade.`); return; }
 
   // Location check — NPC must be reachable
-  const npcLocations = {
-    marcus: 'gas_station', lou: 'diner',
-    alley_dealer: 'alley', chuy: 'trap_house',
-    ray: 'pawn_shop', rosario: 'bar',
-    sneed: 'sneeds', hector: 'auto_shop', earl: getEarlLocation(),
-    manny: 'fenix_alley',
-    town_pharmacist: 'pharmacy',
-    doris: 'doris_door', raymond: 'na_meeting',
-  };
   if (npcLocations[npcKey] && G.location !== npcLocations[npcKey]) {
     const npcName = NPCS[npcKey]?.name || npcKey;
     print(`${npcName} isn't here.`); return;
@@ -2607,13 +2629,6 @@ function printBarterMenu(npcKey, shop, stock) {
   }
   printBlank();
   print(`Cash on hand: $${playerCashTotal()}`, 'system');
-  printBlank();
-
-  if (shop.buys) {
-    print(`Commands: "buy [item]"  "sell [item]"  "offer [your item] for [their item]"  "done"`, 'system');
-  } else {
-    print(`Commands: "buy [item]"  "offer [your item] for [their item]"  "done"`, 'system');
-  }
   printDiv();
 }
 
@@ -2823,7 +2838,8 @@ function doSell(itemName) {
     updateStatus(); return true;
   }
 
-  G.inventory = G.inventory.filter(i => i !== ownedItem);
+  const idx = G.inventory.indexOf(ownedItem);
+  if (idx !== -1) G.inventory.splice(idx, 1);
   logEvt('inventory_remove', ownedItem);
   receiveCash(val);
   print(`You hand over the ${ownedItem}. They give you $${val}.`);
@@ -3214,6 +3230,7 @@ function printDiv() {
 function printRoom(key, force=false) {
   const room = ROOMS[key];
   if (!room) return;
+  roomMenuMode = 'root';
 
   // Cat sleep trigger — if we just left the alley after feeding/petting
   if (key !== 'alley' && G.flags.catPendingSleep) {
@@ -3226,26 +3243,26 @@ function printRoom(key, force=false) {
   checkTransportOutcome();
   checkArrestOutcome();
   checkBustCombatOutcome();
+  checkEarlBustOutcome();
 
   if (force || room.firstVisit) {
-    // Full description — first visit or forced look
-    printBlank();
-    print(room.name, 'room-title');
-    printBlank();
-    room.desc().trim().split('\n').forEach(l => { const t=l.trim(); if(t) print(t); });
-    if (room.firstVisit && room.onFirstVisit) room.onFirstVisit();
-    room.firstVisit = false;
-    printBodiesInRoom();
-    printBlank();
-  } else {
-    // Return visit — just room name + brief dynamic note
-    printBlank();
-    print(room.name, 'room-title');
-    printBodiesInRoom();
-    const dynamicNote = getRoomDynamicNote(key);
-    if (dynamicNote) print(dynamicNote, 'narration');
-    printBlank();
+    // (kept for compatibility — firstVisit still gates one-time triggers below)
   }
+  printBlank();
+  print(room.name, 'room-title');
+  printBlank();
+  room.desc().trim().split('\n').forEach(l => { const t=l.trim(); if(t) print(t); });
+  if (room.firstVisit && room.onFirstVisit) room.onFirstVisit();
+  room.firstVisit = false;
+  printBodiesInRoom();
+  if (key === 'nightclub' && G.flags.bustInvestigationStarted && !G.flags.bustReady) {
+    printWithHint(`You're looking at this place differently now. The bartender might talk if you push.`, ['bartender']);
+    printWithHint(`There's a back office through a door to the rear of the building. You might be able to find something if you're able to sneak in there.`, ['sneak']);
+    printWithHint(`If this is their main place of business, you might be able to surveil the club for a few hours to see who's coming and going.`, ['surveil']);
+  }
+  const dynamicNote = getRoomDynamicNote(key);
+  if (dynamicNote) print(dynamicNote, 'narration');
+  printBlank();
   updateStatus();
 
   // Police route — scripted encounters triggered by entering specific rooms
@@ -3272,7 +3289,7 @@ function getRoomDynamicNote(key) {
     case 'bus_stop_sticks':
       return `Type "ride bus to [downtown / district]" to board.`;
     case 'sticks':
-      return `You can reach the auto shop, trailer park, Sneed's, woods, schoolhouse, and reservoir from here.`;
+      return `You can reach the auto shop, trailer park, Sneed's, woods, and reservoir from here.`;
     case 'woods':
       return `The creek, woods lake, and the Brotherhood's compound are accessible from here.`;
     default:
@@ -4858,6 +4875,7 @@ function handleCommand(raw) {
     case 'exit':      return cmdExit();
     case 'take':      return cmdTake(obj);
     case 'drop':      return cmdDrop(obj);
+    case 'toss':      return cmdToss(obj);
     case 'use':       return cmdUse(obj);
     case 'talk':      return cmdTalk(obj);
     case 'inventory': return cmdInventory();
@@ -5236,15 +5254,13 @@ function cmdLookAtOwnedItem(item) {
 
   // Firearm — show magazine count, works for modified variants too
   if (baseWeaponName(item) === 'blok19') {
+    const attached = G.weaponAttachments[item] || [];
+    const modPhrase = attached.length ? ` with ${attached.join(' and ')}` : '';
+    print(`You look over your Blok-19${modPhrase}.`);
     const mag = G.gunMag || 0;
     const chambered = G.gunChambered ? 1 : 0;
-    print(`You drop the magazine and check it. ${mag} round${mag===1?'':'s'} loaded.`);
-    if (chambered) print(`There's one more in the chamber.`);
-    print(`You slide the magazine back in. The grip says "BLOK-19" in stamped lettering. It looks like a rectangle.`);
-    const attached = G.weaponAttachments[item] || [];
-    if (attached.length) {
-      print(`Attached: ${attached.join(', ')}.`);
-    }
+    print(`You drop the magazine and check it — ${mag} round${mag===1?'':'s'} loaded${chambered ? ', plus one already in the chamber.' : '.'}`);
+    print(`You slide it back in.`);
     return;
   }
 
@@ -5253,7 +5269,7 @@ function cmdLookAtOwnedItem(item) {
     const baseDesc = ITEM_DESC[baseWeaponName(item)];
     if (baseDesc) print(baseDesc);
     const attached = G.weaponAttachments[item] || [];
-    if (attached.length) print(`Modified with: ${attached.join(', ')}.`);
+    if (attached.length) print(`You've rigged it with ${attached.join(' and ')}.`);
     return;
   }
 
@@ -5440,7 +5456,7 @@ function cmdGo(raw, obj) {
                              input === 'the bus stop');
   if (isBareBusRequest) {
     const sticksRooms = ['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
-      'sneeds','cult_camp','schoolhouse','reservoir',
+      'sneeds','cult_camp','reservoir',
       'body_location','creek','woods_lake','trap_house','trap_house_outside'];
     const districtRooms = ['district','police_station','courthouse','clinic',
       'post_office_exterior','park','petting_zoo','park_lake','church',
@@ -5481,6 +5497,9 @@ function cmdGo(raw, obj) {
   if (!ROOMS[destKey]) {
     print(`That place doesn't exist yet.`); return;
   }
+  if (destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation) {
+    print(`You don't know where that is.`); return;
+  }
 
   // Connectivity check — destination must be reachable from current room
   // (directly connected, or one natural step away via exit map)
@@ -5496,7 +5515,7 @@ function cmdGo(raw, obj) {
                    (G.location === 'district' && destKey === 'downtown');
   // All rooms that are part of The Sticks (free movement between them, no bus needed)
   const ALL_STICKS = new Set(['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
-    'sneeds','cult_camp','schoolhouse','reservoir',
+    'sneeds','cult_camp','reservoir',
     'body_location','creek','woods_lake','trap_house','trap_house_outside']);
 
   const fromSticks = ALL_STICKS.has(prevLocation);
@@ -5674,9 +5693,38 @@ function cmdDrop(obj) {
   if (!obj) { print(`Drop what?`); return; }
   const item = G.inventory.find(i => i.includes(obj)||obj.includes(i));
   if (!item) { print(`You're not carrying that.`); return; }
-  G.inventory = G.inventory.filter(i=>i!==item);
+  const idx = G.inventory.indexOf(item);
+  G.inventory.splice(idx, 1);
   ROOMS[G.location].items.push(item);
   print(`You leave the ${item} here.`);
+  updateStatus();
+}
+
+// ─── TOSS (permanent discard) ─────────────────
+// Rooms with a trash bin/dumpster you can actually throw something away in.
+const TRASH_CAN_ROOMS = new Set([
+  'downtown','district','alley','park','gas_station','pawn_shop','bar',
+  'laundromat','nightclub','fenix_alley','sticks','trailer_park','homeless_camp'
+]);
+function cmdToss(obj) {
+  if (!obj) { print(`Toss what?`); return; }
+  const item = G.inventory.find(i => i.includes(obj)||obj.includes(i));
+  if (!item) { print(`You're not carrying that.`); return; }
+  const idx = G.inventory.indexOf(item);
+  G.inventory.splice(idx, 1);
+  logEvt('inventory_remove', item);
+
+  if (TRASH_CAN_ROOMS.has(G.location)) {
+    print(`You toss the ${item} in the trash. Gone for good.`);
+    updateStatus();
+    return;
+  }
+
+  // No bin nearby — you can still toss it, but it's littering
+  print(`No trash can around, so you just chuck the ${item} on the ground. Somebody definitely clocks it.`);
+  illegalAct('littering', 3);
+  adjustKarma(-1);
+  logEvt('karma', G.karma);
   updateStatus();
 }
 
@@ -6211,7 +6259,7 @@ function cmdTalk(obj) {
   }
 
   // Earl
-  if (r.includes('earl') && (G.location === getEarlLocation() || G.location === 'bar')) {
+  if ((r.includes('earl') || r.includes('redneck')) && G.location === getEarlLocation()) {
     talkEarl(); return;
   }
 
@@ -6250,7 +6298,7 @@ function cmdTalk(obj) {
   }
 
   // Cuz
-  if ((r.includes('cuz')||r.includes('cousin')) && G.location === getEarlLocation()) {
+  if ((r.includes('cuz')||r.includes('cousin')) && G.location === getCuzLocation()) {
     talkCuz(); return;
   }
 
@@ -6830,9 +6878,53 @@ function talkEarl() {
   // Police route: noise complaint mission takes priority if active
   if (handleNoiseComplaintAtEarl()) return;
 
+  if (G.flags.earlJailed) {
+    openDialogue('earl', `Earl looks up when he hears you. He doesn't get up off the bunk.`, [
+      { label: "Talk to him", action: () => {
+        if (G.flags.earlRelationship) {
+          print(`"Didn't think you'd actually come by," he says, something almost like a smile. "Guess we're still square, huh."`);
+        } else {
+          print(`He doesn't say much. Eventually: "Guess I should've seen it coming."`);
+        }
+      }},
+    ]);
+    return;
+  }
+
+  // First time arriving at the camp itself (via Cuz's tip, outside the quest) —
+  // Earl knows exactly how you found him.
+  if (G.location === 'moonshiner_camp' && !G.flags.earlCampConfronted) {
+    G.flags.earlCampConfronted = true;
+    G.flags.metEarl = true;
+    G.flags.earlIntro = true;
+    print(`Earl straightens up fast when he sees you, hand going still on the copper tubing.`);
+    print(`"...Cuz," he says, like it explains everything, which — it does. "I'm gonna kill him."`);
+    print(`He doesn't move toward you, exactly, but he doesn't look happy either. He's sizing you up.`);
+    openDialogue('earl', `Earl waits to see what you're going to do about this.`, [
+      { label: "Offer to have a drink with him — smooth it over", action: () => {
+        print(`Something in his shoulders lets go. "...yeah, alright." Earl produces a mason jar and hands it over.`);
+        print(`It tastes like gasoline filtered through optimism. It works.`);
+        print(`"You're alright," he says, like it surprises him. "Don't go telling the whole county, though."`);
+        G.needs.craving = Math.max(0, G.needs.craving - 20);
+        G.flags.earlRelationship = true;
+        logEvt('flag', 'earlRelationship', true);
+        adjustKarma(-2);
+        logEvt('karma', G.karma);
+      }},
+      { label: "Tell him you're going to report this", action: () => {
+        print(`Earl's face closes off completely. "That right." He's already moving.`);
+        print(`He comes at you before you can say anything else.`);
+        startCombat('Earl', 'fists', false);
+      }},
+    ]);
+    return;
+  }
+
   const greeting = G.location === 'bar'
     ? `Earl is on his third beer by the look of it. "Hey," he says.`
-    : `Earl is outside his trailer looking at something in the middle distance. "Hey," he says.`;
+    : G.location === 'moonshiner_camp'
+      ? `Earl looks up from the still. "Hey," he says.`
+      : `Earl is outside his trailer looking at something in the middle distance. "Hey," he says.`;
   openDialogue('earl', greeting, [
     { label: "Ask what he does", action: () => {
       if (!G.flags.earlIntro) {
@@ -6862,25 +6954,58 @@ function talkEarl() {
 }
 
 function talkCuz() {
+  const earlAround = !isEarlAtBar() && !G.flags.earlJailed; // Cuz is only ever alone during Earl's bar hours (or once Earl's locked up)
+
   if (!G.flags.metCuz) {
     G.flags.metCuz = true;
-    print(`He's leaning on the truck, doing something with his hands that might be work.`);
-    print(`He looks up. Opens his mouth to introduce himself.`);
-    print(`"CUZ," Earl's voice from somewhere. "What'd I tell you about yapping on the job?"`);
-    print(`He closes his mouth. Shrugs at you. Goes back to the thing with his hands.`);
-    return;
+    if (earlAround) {
+      print(`He's leaning on the truck, doing something with his hands that might be work.`);
+      print(`He looks up. Opens his mouth to introduce himself.`);
+      print(`"CUZ," Earl's voice from somewhere. "What'd I tell you about yapping on the job?"`);
+      print(`He closes his mouth. Shrugs at you. Goes back to the thing with his hands.`);
+      return;
+    } else {
+      print(`He's leaning on the truck alone, doing something with his hands that might be work.`);
+      print(`He looks up, and this time nobody yells at him. "Oh — hey. I'm Cuz," he says, like it's a fact he's grateful to get to share. "Earl's cousin. You looking for him? He's not around right now."`);
+      print(`"He don't like taking me into town with him," Cuz adds, a little sheepish. "Says I embarrass him. So I just... stay here."`);
+    }
   }
-  openDialogue('cuz', `Cuz looks at you. He seems like he has things to say.`, [
+
+  const options = [
     { label: "Ask his name", action: () => {
-      print(`He starts to answer. Gets one syllable out.`);
-      print(`"CUZ." Earl's voice, from somewhere. Always from somewhere.`);
-      print(`Cuz closes his mouth. Holds up his hands. That's the answer.`);
+      if (earlAround) {
+        print(`He starts to answer. Gets one syllable out.`);
+        print(`"CUZ." Earl's voice, from somewhere. Always from somewhere.`);
+        print(`Cuz closes his mouth. Holds up his hands. That's the answer.`);
+      } else {
+        print(`"Cuz," he says again, happy to repeat it. "Well — it's not really my name. It's just what everybody calls me. Even I kind of forgot the other one."`);
+      }
     }},
     { label: "Ask what he does here", action: () => {
-      print(`He gestures broadly at everything. Then specifically at Earl's trailer. Then he shrugs.`);
-      print(`"Yeah," he seems to say, without saying it.`);
+      if (earlAround) {
+        print(`He gestures broadly at everything. Then specifically at Earl's trailer. Then he shrugs.`);
+        print(`"Yeah," he seems to say, without saying it.`);
+      } else {
+        print(`"Help out. Watch the place. Earl says I'm real good at watching the place," Cuz says, sounding proud of this.`);
+      }
     }},
-  ]);
+  ];
+
+  if (!earlAround) {
+    options.push({ label: "Ask what Earl's operation is / what that smell is", action: () => {
+      if (G.flags.knowsStillLocation) {
+        print(`"That's the still, remember? Back in the woods," Cuz says. "I already told you."`);
+        return;
+      }
+      print(`Cuz looks around, even though there's nobody to look for. "You didn't hear it from me," he says, already about to tell you.`);
+      print(`"Earl's got a still. Out past the sticks, in the woods — there's a trail off to the side, smells like chemicals. You can't miss it." He seems pleased with himself for remembering the directions.`);
+      print(`"Don't tell him I told you. He'll say I embarrassed him again."`);
+      G.flags.knowsStillLocation = true;
+      logEvt('flag', 'knowsStillLocation', true);
+    }});
+  }
+
+  openDialogue('cuz', earlAround ? `Cuz looks at you. He seems like he has things to say.` : `Cuz looks at you, glad for the company.`, options);
 }
 
 function talkMatthias() {
@@ -7425,6 +7550,7 @@ function cmdExits() {
 
   // Direct exits
   for (const dest of Object.values(room.exits||{})) {
+    if (dest === 'moonshiner_camp' && !G.flags.knowsStillLocation) continue;
     if (ROOMS[dest]) destinations.push(ROOMS[dest].name);
   }
 
@@ -7480,6 +7606,16 @@ function cmdHelp() {
   printBlank();
   print(`SAVE: type "history" or click "save log". Copy the text and paste into a .txt file.`);
   print(`LOAD: from the main menu, choose Load Game and paste the log back in.`);
+  printBlank();
+  print(`Combat`, 'subheading');
+  print(`"target [number]" picks who you're aiming at (if there's more than one).`);
+  print(`"hit body/head/left arm/right arm/left leg/right leg" attacks. "equip [weapon]" switches`);
+  print(`weapons. "reload" tops off a gun. "run" tries to flee. The buttons in a fight walk you`);
+  print(`through all of this step by step if you'd rather click than type.`);
+  printBlank();
+  print(`Bartering`, 'subheading');
+  print(`"buy [item]", "sell [item]", "offer [your item] for [their item]", "steal [item]",`);
+  print(`and "done" when you're finished.`);
   printDiv();
 }
 
@@ -7617,25 +7753,24 @@ function cmdStatus() {
   // Print as one natural block
   print(lines.join(' '));
 
-  // Equipped gear — factual readout, not prose
+  // Equipped gear — prose readout
   printBlank();
   const weapon = getPlayerWeapon();
-  print(`Weapon: ${displayWeaponName(weapon)}`, 'system');
-  const armorLines = ['head','body','legs']
-    .map(slot => `${slot}: ${G.equippedArmor[slot] || '—'}`);
-  print(`Armor — ${armorLines.join(', ')}`, 'system');
-  const bag = G.equippedArmor.bag;
-  print(`Bag: ${bag || '— (none)'}`, 'system');
-  // Carry capacity readout
-  const used = getCarryUsed();
-  const max  = getCarryMax();
-  print(`Carry: ${used.toFixed(1)} / ${max} capacity used`, 'system');
-  if (G.stash.length) print(`Apartment stash: ${G.stash.length} item${G.stash.length===1?'':'s'} stored.`, 'system');
-  if (G.bikeStorage.length) {
-    const bikeMax = 8;
-    const bikeUsed = getCarryUsed(G.bikeStorage);
-    print(`Bike saddlebag: ${bikeUsed.toFixed(1)} / ${bikeMax} capacity used.`, 'system');
+  const wornPieces = ['head','body','legs'].map(slot => G.equippedArmor[slot]).filter(Boolean);
+  let gearLine;
+  if (weapon === 'fists') {
+    gearLine = wornPieces.length
+      ? `You're not carrying a weapon, but you've got ${wornPieces.join(', ')} on.`
+      : `You're not carrying a weapon, and you're not wearing anything special.`;
+  } else {
+    gearLine = wornPieces.length
+      ? `You've got the ${displayWeaponName(weapon)} on you, and you're wearing ${wornPieces.join(', ')}.`
+      : `You've got the ${displayWeaponName(weapon)} on you.`;
   }
+  print(gearLine);
+  print(carryCapacityProse());
+  if (G.stash.length) print(`You've got some things stashed back at your apartment.`);
+  if (G.bikeStorage.length) print(`Your bike's saddlebag has some things in it too.`);
 
   // ── DEV READOUT (cheatercheaterpumpkineater only) ──────────
   if (G.flags.devMode) {
@@ -7648,6 +7783,15 @@ function cmdStatus() {
     print(`Hunger: ${n2.hunger.toFixed(1)}  Thirst: ${n2.thirst.toFixed(1)}  Bladder: ${n2.bladder.toFixed(1)}  Fatigue: ${n2.fatigue.toFixed(1)}  Craving: ${n2.craving.toFixed(1)}`, 'system');
     print(`Bleed: ${G.bleed}  BrokenArm: ${G.brokenArm||'none'}  BrokenLeg: ${G.brokenLeg||'none'}  PainkillerMins: ${Math.max(0,G.painkillersActive-G.gameMinutes)}`, 'system');
     print(`Location: ${G.location}  PoliceHeat: ${G.policeHeat||0}  CopWarnings: ${G.copWarnings}`, 'system');
+    print(`Weapon: ${weapon}  Armor: head=${G.equippedArmor.head||'—'} body=${G.equippedArmor.body||'—'} legs=${G.equippedArmor.legs||'—'} bag=${G.equippedArmor.bag||'—'}`, 'system');
+    const used2 = getCarryUsed(); const max2 = getCarryMax();
+    print(`Carry: ${used2.toFixed(1)} / ${max2} capacity used`, 'system');
+    if (G.stash.length) print(`Apartment stash: ${G.stash.length} item${G.stash.length===1?'':'s'} stored.`, 'system');
+    if (G.bikeStorage.length) {
+      const bikeMax = 8;
+      const bikeUsed = getCarryUsed(G.bikeStorage);
+      print(`Bike saddlebag: ${bikeUsed.toFixed(1)} / ${bikeMax} capacity used.`, 'system');
+    }
     const activeEffectKeys = Object.keys(G.activeEffects);
     if (activeEffectKeys.length) print(`ActiveEffects: ${activeEffectKeys.map(k=>`${k}(${G.activeEffects[k].minutesLeft}min)`).join(', ')}`, 'system');
     const flagKeys = Object.keys(G.flags).filter(k => k !== 'devMode');
@@ -8350,6 +8494,9 @@ function handleCombatInput(raw) {
   }
   if (r === 'status' || r === 'check status' || r === 'condition') {
     cmdStatus(); return true;
+  }
+  if (r === 'help') {
+    cmdHelp(); return true;
   }
 
   // Reload
@@ -9624,10 +9771,10 @@ function cmdDevListNpc() {
     pharmacy:'district', park:'district', petting_zoo:'district',
     park_lake:'district', church:'district', na_meeting:'district',
     cemetery:'district', post_office_exterior:'district', nightclub:'district', fenix_alley:'district',
-    bus_stop_district:'district',
+    schoolhouse:'district', bus_stop_district:'district',
     sticks:'sticks', auto_shop:'sticks', trailer_park:'sticks',
     moonshiner_camp:'sticks', sneeds:'sticks', cult_camp:'sticks',
-    homeless_camp:'park', schoolhouse:'sticks', reservoir:'sticks',
+    homeless_camp:'park', reservoir:'sticks',
     woods:'sticks', body_location:'sticks', creek:'sticks', woods_lake:'sticks',
     bus_stop_sticks:'sticks',
   };
@@ -10078,22 +10225,26 @@ function cmdDevListCmd() {
 //        "devskip 90m"      — skip 90 minutes
 function cmdDevSkip(obj) {
   if (!obj) {
-    print(`[DEV] Usage: devskip [Nd] [Nm]  e.g. "devskip 1d 30m", "devskip 2d", "devskip 45m"`, 'system');
+    print(`[DEV] Usage: devskip [Nd] [Nh] [Nm]  e.g. "devskip 1d 30m", "devskip 2h", "devskip 45m"`, 'system');
     return;
   }
   let totalMinutes = 0;
   const dayMatch = obj.match(/(\d+)\s*d/i);
+  const hourMatch = obj.match(/(\d+)\s*h/i);
   const minMatch = obj.match(/(\d+)\s*m/i);
   if (dayMatch) totalMinutes += parseInt(dayMatch[1]) * 24 * 60;
+  if (hourMatch) totalMinutes += parseInt(hourMatch[1]) * 60;
   if (minMatch) totalMinutes += parseInt(minMatch[1]);
   if (totalMinutes <= 0) {
-    print(`[DEV] Couldn't parse time. Use "devskip 1d 30m" format.`, 'system');
+    print(`[DEV] Couldn't parse time. Use "devskip 1d 2h 30m" format.`, 'system');
     return;
   }
   const days = Math.floor(totalMinutes / (24*60));
-  const mins = totalMinutes % (24*60);
+  const hours = Math.floor((totalMinutes % (24*60)) / 60);
+  const mins = totalMinutes % 60;
   const parts = [];
   if (days) parts.push(`${days} day${days>1?'s':''}`);
+  if (hours) parts.push(`${hours} hr`);
   if (mins) parts.push(`${mins} min`);
   advanceTime(totalMinutes);
   print(`[DEV] Skipped ${parts.join(' ')}. Time: ${G.gameMinutes} min (${formatTime(G.gameMinutes % 1440)}).`, 'system');
@@ -10549,7 +10700,7 @@ function cmdSleep() {
 
 // ─── BATHROOM ─────────────────────────────────
 const WOODS_LOCATIONS = new Set(['woods','moonshiner_camp','creek','woods_lake','cult_camp',
-  'schoolhouse','reservoir','body_location','trap_house_outside']);
+  'reservoir','body_location','trap_house_outside']);
 
 function cmdBathroom() {
   const room = ROOMS[G.location];
@@ -10754,6 +10905,13 @@ function getPoliceRouteOption() {
       action: () => offerMission4() };
   }
   if (tier === 4 && !G.flags.bustInvestigationStarted) {
+    if (G.flags.mission5AvailAt && G.gameMinutes < G.flags.mission5AvailAt) {
+      return { label: "Ask if he has more work", action: () => {
+        const daysLeft = Math.ceil((G.flags.mission5AvailAt - G.gameMinutes) / (24*60));
+        print(`Hed shakes his head. "Not yet. Something like this takes planning. Come back in ${daysLeft === 1 ? 'a day or so' : 'a couple days'}."`);
+        print(`He goes back to whatever he was doing.`);
+      }};
+    }
     return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM5',
       action: () => offerMission5() };
   }
@@ -10812,25 +10970,16 @@ const TICKET_HUB_MEMBERS = {
 function getRoomParkingFlavor(roomKey) {
   if (!TICKET_LOCATIONS.includes(roomKey)) return '';
   if (G.flags[`ticketed_${roomKey}`]) return '';  // already handled, don't keep mentioning it
-  if (G.flags.policeMissionActive === 'tickets') {
-    return TICKET_HINTS[roomKey] || '';
-  }
-  // Outside mission: still show the car is there (it's always illegally parked, mission or not)
+  if ((G.flags.policeTier||0) >= 1) return '';    // mission's over — the cars aren't the story anymore
   return TICKET_HINTS[roomKey] || '';
 }
 
 // Returns the parking flavor text for a hub room (downtown/district).
-// Before the ticket mission starts: generic pre-mission flavor (downtown only,
-// per design — the district doesn't have this line since the player hasn't
-// been primed to notice bad parking yet).
-// During the mission: lists hints for any unticketed cars belonging to that hub.
+// Shows hints for any unticketed cars belonging to that hub, before or during
+// the ticket mission. Goes silent once the mission has concluded, even if
+// some cars never got individually ticketed (mission only needs 3 of 6).
 function getParkingFlavor(hub) {
-  if (G.flags.policeMissionActive !== 'tickets') {
-    if (hub === 'downtown') {
-      return `A few cars are parked along the street. A couple of them look like they're in a pretty bad spot — that's gotta be illegal.`;
-    }
-    return '';
-  }
+  if ((G.flags.policeTier||0) >= 1) return '';
   const members = TICKET_HUB_MEMBERS[hub] || [];
   const unticketed = members.filter(loc => !G.flags[`ticketed_${loc}`]);
   if (!unticketed.length) return '';
@@ -10893,6 +11042,14 @@ function checkMission1Complete() {
   }
   print(`He hands you a few bills.`);
   receiveCash(15);
+  // Mission's over — the rest of the parking jobs get handled by someone else,
+  // don't keep flagging them as outstanding forever.
+  for (const loc of TICKET_LOCATIONS) {
+    if (!G.flags[`ticketed_${loc}`]) {
+      G.flags[`ticketed_${loc}`] = true;
+      logEvt('flag', `ticketed_${loc}`, true);
+    }
+  }
   G.flags.policeMissionActive = null;
   G.flags.policeTier = 1;
   logEvt('flag', 'policeMissionActive', null);
@@ -10914,20 +11071,44 @@ function offerMission2() {
 }
 
 // Called from talkEarl when the player is on the noise mission
+function resolveNoiseShutdown() {
+  adjustKarma(5);
+  logEvt('karma', G.karma);
+  G.flags.noiseResolved = 'shutdown';
+  logEvt('flag', 'noiseResolved', 'shutdown');
+  G.flags.policeMissionActive = null;
+  logEvt('flag', 'policeMissionActive', null);
+  G.flags.earlJailed = true;
+  logEvt('flag', 'earlJailed', true);
+  G.flags.earlRelationship = false;
+  logEvt('flag', 'earlRelationship', false);
+  print(`Hed will want to hear it went fine.`);
+}
+
 function handleNoiseComplaintAtEarl() {
   if (G.flags.policeMissionActive !== 'noise' || G.flags.noiseResolved) return false;
   // Extra guard: if bribe was already paid, block re-entry entirely
   if (G.flags.earlBribePaid) return false;
   // The "noise" is the still running — that only happens at the camp at night.
-  // Finding Earl at the trailer park during the day shouldn't let you resolve this.
-  if (!isEarlAtCamp()) {
-    print(`Nothing's running back here right now. Whatever Hed's hearing about, it's not happening in broad daylight.`);
-    return false;
-  }
+  // Anywhere else (bar, trailer park), just have a normal conversation instead.
+  if (!isEarlAtCamp()) return false;
 
-  openDialogue('earl', `Earl looks at you different this time — wary. "You're not here for a drink, are you."`, [
-    { label: "Tell him you're here about the noise complaint", action: () => {
-      print(`Earl's face does something complicated. "Ah, hell." He looks back at his operation. "Sheriff send you?"`);
+  const firstMeeting = !G.flags.metEarl;
+  G.flags.metEarl = true;
+  G.flags.earlCampConfronted = true;
+  G.flags.earlIntro = true;
+
+  const greeting = firstMeeting
+    ? `A man in his fifties looks up from the still, wiping his hands on a rag. Earl, you'd guess, though you've never actually met him before now. He stops what he's doing when he sees you, and doesn't come any closer.\n"...you a cop?" he says, wary.`
+    : `Earl looks at you different this time — wary. "You're not here for a drink, are you."`;
+
+  openDialogue('earl', greeting, [
+    { label: firstMeeting ? '"No — but they sent me."' : "Tell him you're here about the noise complaint", action: () => {
+      if (firstMeeting) {
+        print(`Earl's face does something complicated. "Ah, hell." He looks back at his operation. "Should've figured. Nobody just wanders out here."`);
+      } else {
+        print(`Earl's face does something complicated. "Ah, hell." He looks back at his operation. "Sheriff send you?"`);
+      }
       print(`He's quiet for a second. "I can make it worth your while," he says. "Or you can shut me down. Your call, I guess."`);
       openDialogue('earl', `Earl waits.`, [
         { label: "Take the bribe — let him keep running (lie to Hed)", action: () => {
@@ -10947,16 +11128,19 @@ function handleNoiseComplaintAtEarl() {
           print(`Hed will want to hear it went fine.`);
           closeDialogue();
         }},
-        { label: "Shut it down for real", action: () => {
-          print(`Earl's shoulders drop. "Yeah. Figured." He starts disassembling the still without being asked twice.`);
-          print(`"Three years of work," he says. Not bitter, exactly. Tired.`);
-          adjustKarma(5);
-          logEvt('karma', G.karma);
-          G.flags.noiseResolved = 'shutdown';
-          logEvt('flag', 'noiseResolved', 'shutdown');
-          G.flags.policeMissionActive = null;
-          logEvt('flag', 'policeMissionActive', null);
-          print(`Hed will want to hear it went fine.`);
+        { label: "Refuse the bribe — shut him down", action: () => {
+          if (!G.flags.earlRelationship) {
+            print(`Earl's face goes hard. "You're really gonna do this." He doesn't wait for you to answer.`);
+            print(`He comes at you.`);
+            closeDialogue();
+            G.flags.earlBustCombatActive = true;
+            logEvt('flag', 'earlBustCombatActive', true);
+            startCombat('Earl', 'fists', false);
+            return;
+          }
+          print(`Earl's shoulders drop. "Yeah. Figured you might, eventually." He doesn't even look surprised.`);
+          print(`He starts disassembling the still without being asked twice. "Three years of work," he says. Not bitter, exactly. Tired.`);
+          resolveNoiseShutdown();
         }},
       ]);
     }},
@@ -11082,7 +11266,9 @@ function checkTransportOutcome() {
     print(`Rodriguez nods and goes back to sleep.`, 'narration');
   }
   printBlank();
-  print(`You finish the drive. County takes him — or the paperwork for him — without much ceremony.`, 'narration');
+  print(prisonerKilled
+    ? `You finish the drive. County takes the paperwork for him — nothing left to book.`
+    : `You finish the drive. County takes him without much ceremony.`, 'narration');
   G.flags.transportStage = 2;
   logEvt('flag', 'transportStage', 2);
 
@@ -11203,6 +11389,17 @@ function encounterArrestTarget() {
   return true;
 }
 
+function checkEarlBustOutcome() {
+  if (!G.flags.earlBustCombatActive) return;
+  if (combatState) return;
+  G.flags.earlBustCombatActive = false;
+  logEvt('flag', 'earlBustCombatActive', false);
+  if (G.gameOver) return;
+
+  print(`Earl's on the ground, done fighting. You shut the still down yourself — he doesn't try to stop you.`);
+  resolveNoiseShutdown();
+}
+
 function checkArrestOutcome() {
   if (!G.flags.arrestCombatActive) return;
   if (combatState) return;
@@ -11233,6 +11430,9 @@ function checkMission4Complete() {
   logEvt('flag', 'policeTier', 4);
   adjustKarma(2);
   logEvt('karma', G.karma);
+  // Time-gate: the bust isn't available for 2 days — Hed needs to actually plan it
+  G.flags.mission5AvailAt = G.gameMinutes + 2 * 24 * 60;
+  logEvt('flag', 'mission5AvailAt', G.flags.mission5AvailAt);
   // Remove the warrant — it's been served
   const wIdx = G.inventory.indexOf('warrant');
   if (wIdx !== -1) { G.inventory.splice(wIdx, 1); logEvt('inventory_remove', 'warrant'); }
@@ -11253,7 +11453,7 @@ function offerMission5() {
   print(`"Don't get yourself killed about it. That part's not optional."`);
   G.flags.bustInvestigationStarted = true;
   G.flags.bustEvidence = 0;
-  print(`You'll need something concrete before you take this back to Hed. Start with the nightclub.`);
+  printWithHint(`You'll need something concrete before you take this back to Hed. Start with the nightclub — talk to the bartender, sneak toward the back office, or watch the place a while.`, ['talk to bartender','sneak','surveil']);
 }
 
 // Five ways to gather evidence — called from various locations/interactions
@@ -12581,6 +12781,12 @@ cmdInput.addEventListener('keydown', e => {
 
   // Command chaining — split on semicolons or "then"
   // e.g. "exit; go downtown; go alley" or "exit then go downtown then go alley"
+  // Exception: "alias name='cmd1; cmd2'" — the semicolon there is part of the
+  // alias body being defined, not a live chain separator, so pass it through whole.
+  if (/^alias\s+\S+\s*=/i.test(val)) {
+    handleCommand(val);
+    return;
+  }
   const chainSep = /\s*;\s*|\s+then\s+/;
   const chains = val.split(chainSep).map(s => s.trim()).filter(Boolean);
 
@@ -12699,10 +12905,78 @@ function renderCombatButtons() {
   }
 }
 
+// Groups "go" submenu destinations so quest-critical civic buildings show first,
+// then shops/flavor locations, then hub zones and bus stops last.
+const EXIT_CATEGORY = {
+  police_station: 'quest', courthouse: 'quest', clinic: 'quest', church: 'quest',
+  schoolhouse: 'shop', post_office_exterior: 'shop', nightclub: 'shop', park: 'shop',
+  diner: 'shop', gas_station: 'shop', pawn_shop: 'shop', bar: 'shop',
+  pharmacy: 'shop', laundromat: 'shop', motel: 'shop', alley: 'shop',
+  auto_shop: 'shop', sneeds: 'shop', trailer_park: 'shop', moonshiner_camp: 'shop',
+  woods: 'shop', reservoir: 'shop', cult_camp: 'shop', homeless_camp: 'shop',
+  apartment: 'hub', hallway: 'hub',
+  downtown: 'hub', district: 'hub', sticks: 'hub',
+  bus_stop_downtown: 'hub', bus_stop_district: 'hub', bus_stop_sticks: 'hub',
+};
+const EXIT_CATEGORY_ORDER = { quest: 0, shop: 1, hub: 2 };
+
+// Shortened button labels — full room names (from the look description) are
+// too long for the hotbar, e.g. "LOS CIEGOS POLICE DEPARTMENT" -> "POLICE DEPARTMENT".
+const EXIT_SHORT_NAME = {
+  police_station: 'POLICE DEPARTMENT', courthouse: 'COURTHOUSE', clinic: 'CLINIC',
+  church: 'CHURCH', schoolhouse: 'SCHOOLHOUSE', post_office_exterior: 'POST OFFICE',
+  nightclub: 'CLUB FENIX', park: 'PARK', diner: "LOU'S DINER", gas_station: "WALLY'S GAS",
+  pawn_shop: 'PAWN SHOP', bar: "ROSARIO'S BAR", pharmacy: 'PHARMACY', laundromat: 'LAUNDROMAT',
+  motel: 'MOTEL', alley: 'THE ALLEY', auto_shop: "HECTOR'S AUTO", sneeds: "SNEED'S",
+  trailer_park: 'TRAILER PARK', moonshiner_camp: "EARL'S OPERATION", woods: 'THE WOODS',
+  reservoir: 'RESERVOIR', cult_camp: 'CULT COMPOUND', homeless_camp: 'HOMELESS CAMP',
+  apartment: 'APARTMENT', hallway: 'HALLWAY', downtown: 'DOWNTOWN', district: 'DISTRICT',
+  sticks: 'THE STICKS', bus_stop_downtown: 'BUS STOP', bus_stop_district: 'BUS STOP',
+  bus_stop_sticks: 'BUS STOP',
+};
+
+let roomMenuMode = 'root'; // 'root' | 'go' | 'talk' — drives the staged non-combat hotbar
+
+// Filters a room's static npc list down to who's actually here right now —
+// handles the few NPCs whose presence depends on time of day / story flags.
+function getPresentNpcs(roomKey) {
+  const room = ROOMS[roomKey];
+  if (!room || !room.npcs) return [];
+  return room.npcs.filter(k => {
+    if (isNpcDead(k)) return false;
+    if (k === 'earl') return roomKey === getEarlLocation();
+    if (k === 'cuz') return roomKey === getCuzLocation();
+    if (k === 'manny') {
+      const h = getGameHour();
+      return (h >= 21 || h < 5) && !G.flags.mannyGone;
+    }
+    if (k === 'alley_dealer' && G.flags.alleyDealerGone) return false;
+    return true;
+  });
+}
+
 function refreshContextButtons() {
-  if (combatState) { renderCombatButtons(); return; }
   const container = document.getElementById('context-btns');
   if (!container) return;
+
+  // Exit-to-menu confirmation takes priority over everything, including combat —
+  // it's a real y/n prompt blocking normal input either way.
+  if (G.flags._pendingExitConfirm) {
+    container.innerHTML = '';
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'qbtn qbtn-warn';
+    yesBtn.textContent = 'yes, exit to menu';
+    yesBtn.onclick = () => quickCmd('y');
+    container.appendChild(yesBtn);
+    const noBtn = document.createElement('button');
+    noBtn.className = 'qbtn';
+    noBtn.textContent = 'no, stay';
+    noBtn.onclick = () => quickCmd('n');
+    container.appendChild(noBtn);
+    return;
+  }
+
+  if (combatState) { renderCombatButtons(); return; }
   container.innerHTML = '';
   if (!G.playerName) return; // not in an active game
   if (G.gameOver) {
@@ -12716,7 +12990,67 @@ function refreshContextButtons() {
   }
 
   const room = ROOMS[G.location];
+
+  // ── Staged submenus: go (destinations) / talk (NPCs present) ──
+  if (roomMenuMode === 'go') {
+    const exits = (room && room.exits) || {};
+    const entries = Object.entries(exits)
+      .filter(([exitKey, destKey]) => !(destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation))
+      .sort((a, b) => {
+        const catA = EXIT_CATEGORY_ORDER[EXIT_CATEGORY[a[1]]] ?? 1;
+        const catB = EXIT_CATEGORY_ORDER[EXIT_CATEGORY[b[1]]] ?? 1;
+        return catA - catB;
+      });
+    for (const [exitKey, destKey] of entries) {
+      const destRoom = ROOMS[destKey];
+      const label = EXIT_SHORT_NAME[destKey] || (destRoom ? destRoom.name : exitKey);
+      const btn = document.createElement('button');
+      btn.className = 'qbtn';
+      btn.textContent = label;
+      btn.onclick = () => { roomMenuMode = 'root'; quickCmd(`go ${exitKey}`); };
+      container.appendChild(btn);
+    }
+    const back = document.createElement('button');
+    back.className = 'qbtn';
+    back.textContent = '< back';
+    back.onclick = () => { roomMenuMode = 'root'; refreshContextButtons(); };
+    container.appendChild(back);
+    return;
+  }
+  if (roomMenuMode === 'talk') {
+    const present = getPresentNpcs(G.location);
+    for (const npcKey of present) {
+      let label = NPCS[npcKey]?.name || npcKey;
+      if (npcKey === 'earl' && !G.flags.metEarl) label = 'Redneck';
+      const btn = document.createElement('button');
+      btn.className = 'qbtn';
+      btn.textContent = label;
+      btn.onclick = () => { roomMenuMode = 'root'; quickCmd(`talk to ${label}`); };
+      container.appendChild(btn);
+    }
+    if (!present.length) {
+      const empty = document.createElement('div');
+      empty.className = 'qbtn-empty';
+      empty.textContent = 'Nobody here to talk to.';
+      container.appendChild(empty);
+    }
+    const back = document.createElement('button');
+    back.className = 'qbtn';
+    back.textContent = '< back';
+    back.onclick = () => { roomMenuMode = 'root'; refreshContextButtons(); };
+    container.appendChild(back);
+    return;
+  }
+
   const buttons = []; // {label, cmd}
+
+  // Go / talk — expand into staged submenus rather than one button per option
+  if (room && room.exits && Object.keys(room.exits).length) {
+    buttons.push({ label: 'go', action: () => { roomMenuMode = 'go'; refreshContextButtons(); } });
+  }
+  if (getPresentNpcs(G.location).length) {
+    buttons.push({ label: 'talk', action: () => { roomMenuMode = 'talk'; refreshContextButtons(); } });
+  }
 
   const SEVERE = 65; // medium-high threshold, matches existing need warning tier
 
@@ -12797,7 +13131,7 @@ function refreshContextButtons() {
     const btn = document.createElement('button');
     btn.className = 'qbtn';
     btn.textContent = b.label;
-    btn.onclick = () => quickCmd(b.cmd);
+    btn.onclick = b.action || (() => quickCmd(b.cmd));
     container.appendChild(btn);
   }
 }
@@ -12806,6 +13140,7 @@ function refreshContextButtons() {
 function confirmExitToMenu() {
   print(`Exit to the main menu? Unsaved progress will be lost. Type "y" to confirm, "n" to cancel.`, 'system');
   G.flags._pendingExitConfirm = true;
+  refreshContextButtons();
 }
 
 // Same destination as exit-to-menu, but immediate — no y/n prompt.
@@ -12825,6 +13160,7 @@ function handleExitConfirm(raw) {
   if (r === 'n' || r === 'no') {
     G.flags._pendingExitConfirm = false;
     print(`Staying put.`);
+    refreshContextButtons();
     return true;
   }
   print(`Type "y" to exit to the menu, or "n" to cancel.`, 'system');
