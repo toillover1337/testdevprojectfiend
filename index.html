@@ -539,6 +539,9 @@ const G = {
   stash:       [],         // apartment safe storage (unlimited)
   bikeStorage: [],         // bike saddlebag (capped at BIKE_STORAGE_CAP capacity units)
   trashSearched: {},       // { [roomId]: lastGameMinutesSearched }
+  floorItems: {},          // { [roomId]: [{item, droppedAt}] } — plain-dropped items, despawn after a few hours
+  trashTossedItems: {},    // { [roomId]: [item, ...] } — items tossed in a trash bin, recoverable by rummaging
+  trashTossedAt: {},       // { [roomId]: gameMinutes } — when the above were tossed, for the 24hr respawn wipe
   aliases:     {},         // { name: 'cmd1; cmd2' } — player-defined command shorthand
   savedCmds:   {},         // { label: 'command string' } — saved command palette
 };
@@ -734,8 +737,7 @@ const VERBS = {
   go:        ['go','walk','move','travel','head','run','enter','climb','go to','head to','walk to'],
   exit:      ['exit','leave','go outside','get out','out','outside','back'],
   take:      ['take','get','grab','pick','pickup','pick up','snag','steal','swipe','lift','pocket'],
-  drop:      ['drop','discard','put down'],
-  toss:      ['toss','throw away','throw out'],
+  toss:      ['toss','drop','discard','put down','throw away','throw out'],
   use:       ['use','apply','activate','open','unlock','light','smoke','shoot',
               'inject','drink','eat','read','try','attempt','swallow','pop','snort','shoot up',
               'bandage','heal','treat','patch','wrap'],
@@ -750,7 +752,6 @@ const VERBS = {
   ticket:    ['ticket','write up','write a ticket','ticket car','ticket the car'],
   surveil:   ['surveil','watch the club','stake out','keep watch','observe the club'],
   sneak:     ['sneak','sneak in','sneak into the back','slip into the back','search the office'],
-  buydrink:  ['buy him a drink','buy a drink','buy him drink'],
   wait:      ['wait','rest','z','pause'],
   barter:    ['barter','trade','shop','buy from','sell to','exchange'],
   bus:       ['ride bus','ride the bus','catch bus','bus to','board bus','get on bus'],
@@ -788,6 +789,7 @@ const VERBS = {
   devlistcmd:  ['devlistcmd'],
   devskip:     ['devskip'],
   devbuff:     ['devbuff'],
+  devheal:     ['devheal'],
   status:    ['status','how am i doing','how am i','stats','my status','check status'],
   needs:     ['needs','bodily needs','take care of needs',
               'satisfy needs','check needs','attend to needs'],
@@ -847,9 +849,10 @@ Your neighbors are down the hall. The stairwell goes back down to the street.`,
     name: 'APARTMENT HALLWAY — FLOOR 4',
     firstVisit: true, safeSleep: false, safeBathroom: false,
     desc: () => `The carpet is the color of a bruise. Smells like microwaved fish and old ambitions.
-Your apartment (4A) is to the south. The stairwell leads down to the street — "go downtown" or "go out" to leave.
+Your apartment (4A) is to the south. The stairwell leads down to the street.
 Eight doors line this hallway. A hand-painted sign on 4B says "DORIS."
-${G.flags.metDoris2 ? '4C: you heard music earlier.' : ''}`,
+${G.flags.metDoris2 ? '4C: you heard music earlier.' : ''}
+${(G.flags.knowsBartenderHome && G.flags.knowsLaSenora) ? "4F doesn't look like much, but you're pretty sure that's the one from the phone call." : ''}`,
     exits: {
       south: 'apartment', down: 'downtown', out: 'downtown',
       north: 'doris_door',
@@ -892,7 +895,9 @@ ${G.flags.met4e ? 'Miguel from 4E knows your name now.' : G.flags.knocked4e ? 'M
     name: 'APT 4F',
     firstVisit: true, safeSleep: false, safeBathroom: false,
     desc: () => `A door. There is absolutely nothing notable about this door whatsoever.
-${G.flags.knocked4f ? 'Nobody answered. Nobody is going to.' : 'You can knock.'}`,
+${(G.flags.knowsBartenderHome && G.flags.knowsLaSenora)
+  ? (G.flags.bartenderConfronted ? "You've already had your conversation with whoever lives here." : "Except — you're pretty sure this is the place. The one from the phone call.")
+  : (G.flags.knocked4f ? 'Nobody answered. Nobody is going to.' : 'You can knock.')}`,
     exits: { south: 'hallway' }, items: [], npcs: [],
   },
 
@@ -930,7 +935,7 @@ Here: the diner, the bar, the alley, Wally's Gas, the pawn shop, the pharmacy,
 the laundromat, and the motel. A guy named Gerald sits on the bench near the corner, same as always.
 ${G.flags.hasCar ? 'Your motorbike is parked nearby.' : 'The bus stop is on the corner.'}
 A few blocks away is the District — the park, the church, the nightclub, and the civic buildings are over there.
-The sticks are accessible by bus. Your apartment building is next to the diner — "go home" to head up.
+The sticks are accessible by bus. Your apartment building is next to the diner.
 ${trashBinDesc('downtown')}
 ${getParkingFlavor('downtown')}`,
     exits: {
@@ -1096,14 +1101,17 @@ ${G.flags.evidenceLockerRifled
   jail_cells: {
     name: 'THE CELLS — LCPD',
     firstVisit: true, safeSleep: true, safeBathroom: true,
-    desc: () => `Three cells. One has a bent bar that nobody has fixed. One has a inspirational
+    desc: () => {
+      const occupants = [];
+      if (G.flags.earlJailed) occupants.push(`Earl's in one cell, sitting on the bunk with his elbows on his knees. He doesn't look up right away.`);
+      if (G.flags.daleJailed) occupants.push(`Dale's in another cell, favoring his knee, looking deeply sorry for himself.`);
+      const occupantLine = occupants.length ? occupants.join(' ') : 'The cells are empty right now. The toilet still runs.';
+      return `Three cells. One has a bent bar that nobody has fixed. One has a inspirational
 poster ("HANG IN THERE") that is deeply ironic in context. The third has a toilet that runs
 constantly, like a small waterfall of institutional defeat.
-${G.flags.inJail
-  ? `You are in cell ${G.flags.jailCell||2}. Sheriff Hed is visible through the door, still eating.`
-  : G.flags.earlJailed ? `Earl's in the far cell, sitting on the bunk with his elbows on his knees. He doesn't look up right away.`
-  : 'The cells are empty right now. The toilet still runs.'}`,
-    exits: { out: 'police_station' }, items: [], npcs: ['earl'],
+${G.flags.inJail ? `You are in cell ${G.flags.jailCell||2}. Sheriff Hed is visible through the door, still eating.` : occupantLine}`;
+    },
+    exits: { out: 'police_station' }, items: [], npcs: ['earl','dale'],
   },
 
   // ── TRAP HOUSE ─────────────────────────────
@@ -1268,7 +1276,8 @@ Chemistry supplies are technically available here because they are technically l
     desc: () => `A nightclub that operates on the understanding that Los Ciegos deserves
 nightlife even if nobody asked. Neon, bass, and a door policy enforced by a man built
 like a filing cabinet. Inside: a bar — a bartender working it, unbothered, wiping the
-same glass — a dance floor, a DJ who is clearly overqualified, and in the back — La Señora's domain.
+same glass — a dance floor, a DJ who is clearly overqualified, and a big guy who doesn't
+dance, stationed near a door at the back.
 ${G.flags.gangTier >= 1 ? 'The bouncer nods when he sees you. You are expected.' : ''}
 ${trashBinDesc('nightclub')}
 There's a back exit to the alley behind the building.`,
@@ -2466,7 +2475,8 @@ function redeemTicketAtMarcus() {
     print(`You don't have a winning ticket.`); return;
   }
   const amount = itemValue(ticket);
-  G.inventory = G.inventory.filter(i => i !== ticket);
+  const tIdx = G.inventory.indexOf(ticket);
+  if (tIdx !== -1) G.inventory.splice(tIdx, 1);
   logEvt('inventory_remove', ticket);
   receiveCash(amount);
   print(`Marcus squints at the ticket. Squints some more. Checks the back.`);
@@ -2543,7 +2553,7 @@ function cmdBarter(obj) {
   if (!npcKey) { print(`Who do you want to trade with?`); return; }
 
   // Crime scene — no trading
-  if (G.flags[`crimeScene_${G.location}`]) {
+  if (isCrimeScene(G.location)) {
     print(`There's nobody here to trade with.`); return;
   }
 
@@ -2667,7 +2677,7 @@ function handleBarterCommand(raw) {
     return true;
   }
 
-  // "offer [item] for [item]" — single offer only (multi-offer is confusing)
+  // "offer [item(s)] for [item(s)]" — both sides support comma/quantity like buy/sell
   const offerMatch = r.match(/^offer\s+(.+?)\s+for\s+(.+)$/);
   if (offerMatch) { doOffer(offerMatch[1].trim(), offerMatch[2].trim()); return true; }
 
@@ -2847,27 +2857,62 @@ function doSell(itemName) {
   return true;
 }
 
-function doOffer(yourItemName, theirItemName) {
+function doOffer(yourItemsStr, theirItemsStr) {
   const { npcKey, shop } = barterSession;
   const stock = G.shopStock[npcKey] || [];
 
-  const theirEntry = stock.find(e => e.item.includes(theirItemName) || theirItemName.includes(e.item));
-  if (!theirEntry) { print(`They don't have that.`); return; }
+  // Parse their side: comma-separated, each with an optional trailing quantity.
+  const theirRequested = splitItems(theirItemsStr).map(parseItemQuantity);
+  const theirEntries = []; // stock entries being requested (repeats allowed for qty>1)
+  for (const { name, qty } of theirRequested) {
+    const entry = stock.find(e => e.item.includes(name) || name.includes(e.item));
+    if (!entry) { print(`They don't have "${name}".`); return; }
+    for (let q = 0; q < qty; q++) theirEntries.push(entry);
+  }
+  if (!theirEntries.length) { print(`Offer for what, exactly?`); return; }
 
-  const yourItem = G.inventory.find(i => i.includes(yourItemName) || yourItemName.includes(i));
-  if (!yourItem) { print(`You're not carrying that.`); return; }
+  // Parse your side: comma-separated, each with an optional trailing quantity —
+  // "2 pocket knives, lighter" works the same way "buy"/"sell" do.
+  const requested = splitItems(yourItemsStr).map(parseItemQuantity);
+  const pulled = []; // actual inventory item strings being handed over
+  for (const { name, qty } of requested) {
+    for (let q = 0; q < qty; q++) {
+      const match = G.inventory.find(i => !pulled.includes(i) && (i.includes(name) || name.includes(i)));
+      if (!match) {
+        print(`You don't have ${qty > 1 ? `${qty} of` : ''} "${name}" to offer.`); return;
+      }
+      pulled.push(match);
+    }
+  }
+  if (!pulled.length) { print(`Offer what, exactly?`); return; }
 
-  const yourVal  = itemValue(yourItem);
-  const theirVal = theirEntry.price;
+  const yourVal  = pulled.reduce((sum, i) => sum + itemValue(i), 0);
+  const theirVal = theirEntries.reduce((sum, e) => sum + e.price, 0);
   const diff     = yourVal - theirVal; // positive = you're overpaying in goods
+  const itemsDesc = pulled.length > 1 ? `${pulled.slice(0,-1).join(', ')} and ${pulled[pulled.length-1]}` : pulled[0];
+  const theirDesc = theirEntries.length > 1
+    ? `${theirEntries.slice(0,-1).map(e=>e.item).join(', ')} and ${theirEntries[theirEntries.length-1].item}`
+    : theirEntries[0].item;
+
+  function handOverPulledItems() {
+    for (const item of pulled) {
+      const idx = G.inventory.indexOf(item);
+      if (idx !== -1) G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', item);
+    }
+  }
+  function receiveTheirItems() {
+    for (const entry of theirEntries) {
+      G.inventory.push(entry.item);
+      logEvt('inventory_add', entry.item);
+      if (isMultiUse(entry.item)) addMultiUseContainer(entry.item);
+    }
+  }
 
   // You're offering something worth more than what you want
   if (diff >= 0) {
-    G.inventory = G.inventory.filter(i => i !== yourItem);
-    logEvt('inventory_remove', yourItem);
-    G.inventory.push(theirEntry.item);
-    logEvt('inventory_add', theirEntry.item);
-    if (isMultiUse(theirEntry.item)) addMultiUseContainer(theirEntry.item);
+    handOverPulledItems();
+    receiveTheirItems();
 
     // Give change if diff > $5 and they have cash
     if (diff > 5) {
@@ -2876,28 +2921,25 @@ function doOffer(yourItemName, theirItemName) {
       if (change > 0) {
         G.flags[`${npcKey}_cash`] = theirCash - change;
         receiveCash(change);
-        print(`They take the ${yourItem} and hand you the ${theirEntry.item} plus $${change} change.`);
+        print(`They take the ${itemsDesc} and hand you the ${theirDesc} plus $${change} change.`);
       } else {
-        print(`They take the ${yourItem} and give you the ${theirEntry.item}. "Keep the difference," they say.`);
+        print(`They take the ${itemsDesc} and give you the ${theirDesc}. "Keep the difference," they say.`);
       }
     } else {
-      print(`They take the ${yourItem} and give you the ${theirEntry.item}. Close enough.`);
+      print(`They take the ${itemsDesc} and give you the ${theirDesc}. Close enough.`);
     }
     updateStatus();
     return;
   }
 
   // You're offering something worth less than what you want
-  const shortfall = Math.abs(diff); // how much less your item is worth
+  const shortfall = Math.abs(diff); // how much less your items are worth combined
   if (shortfall <= 3) {
     // Within $3 tolerance — friendly NPCs let it slide
     if (shop.type === 'friendly') {
-      G.inventory = G.inventory.filter(i => i !== yourItem);
-      logEvt('inventory_remove', yourItem);
-      G.inventory.push(theirEntry.item);
-      logEvt('inventory_add', theirEntry.item);
-      if (isMultiUse(theirEntry.item)) addMultiUseContainer(theirEntry.item);
-      print(`They look at the ${yourItem}. "Close enough," they say, and hand you the ${theirEntry.item}.`);
+      handOverPulledItems();
+      receiveTheirItems();
+      print(`They look at the ${itemsDesc}. "Close enough," they say, and hand you the ${theirDesc}.`);
       updateStatus();
     } else {
       print(`"That's a couple bucks short," they say. "Cash or something worth more."`);
@@ -2906,7 +2948,7 @@ function doOffer(yourItemName, theirItemName) {
   }
 
   // Too short
-  print(`The ${yourItem} is worth $${yourVal}. The ${theirEntry.item} costs $${theirVal}. That's $${shortfall} short.`);
+  print(`The ${itemsDesc} ${pulled.length > 1 ? 'are' : 'is'} worth $${yourVal} combined. The ${theirDesc} cost${theirEntries.length>1?'':'s'} $${theirVal}. That's $${shortfall} short.`);
   print(`You need to add cash or throw in something else.`);
 }
 
@@ -3231,6 +3273,10 @@ function printRoom(key, force=false) {
   const room = ROOMS[key];
   if (!room) return;
   roomMenuMode = 'root';
+  if (G.flags.policeProcedureRoom && G.flags.policeProcedureRoom !== key) {
+    delete G.flags.policeProcedureRoom;
+    logEvt('flag', 'policeProcedureRoom', null);
+  }
 
   // Cat sleep trigger — if we just left the alley after feeding/petting
   if (key !== 'alley' && G.flags.catPendingSleep) {
@@ -3256,12 +3302,27 @@ function printRoom(key, force=false) {
   room.firstVisit = false;
   printBodiesInRoom();
   if (key === 'nightclub' && G.flags.bustInvestigationStarted && !G.flags.bustReady) {
-    printWithHint(`You're looking at this place differently now. The bartender might talk if you push.`, ['bartender']);
-    printWithHint(`There's a back office through a door to the rear of the building. You might be able to find something if you're able to sneak in there.`, ['sneak']);
-    printWithHint(`If this is their main place of business, you might be able to surveil the club for a few hours to see who's coming and going.`, ['surveil']);
+    if (!G.flags.evidence_bartender) {
+      print(`The bartender clearly knows more than he's letting on. He's not saying anything here, though — not with people around.`);
+    }
+    if (G.flags.knowsLaSenora) {
+      print(`Dennis is still posted by that door in the rear. He's guarding it for a reason — that must be where the magic happens.`);
+    } else {
+      print(`There's a big guy who sticks close to a door to the rear of the building. He must be the muscle.`);
+    }
+    if (G.flags.officeAccessGranted && !G.flags.evidence_physical) {
+      printWithHint(`You know how to get past him now — you could sneak in there.`, ['sneak']);
+    } else if (!G.flags.officeAccessGranted) {
+      print(`That door's locked, and he doesn't wander far from it. You'd need a way in first.`);
+    }
+    if (!G.flags.evidence_surveillance) {
+      printWithHint(`If this is their main place of business, you might be able to surveil the club for a few hours to see who's coming and going.`, ['surveil']);
+    }
   }
   const dynamicNote = getRoomDynamicNote(key);
   if (dynamicNote) print(dynamicNote, 'narration');
+  const floorNote = getFloorItemsNote(key);
+  if (floorNote) print(floorNote, 'narration');
   printBlank();
   updateStatus();
 
@@ -3856,12 +3917,12 @@ function applyWitnessReaction(roomKey, suppressed, crimeDescription) {
     G.flags.witnessTimer    = G.gameMinutes + escapeMinutes;
     G.flags.witnessLocation = roomKey;
     G.flags.witnessCrime    = crimeDescription || 'homicide';
-    // Flag the room as a crime scene — NPCs fled, interactions blocked until player leaves
-    G.flags[`crimeScene_${roomKey}`] = true;
+    // Flag the room as a crime scene — NPCs fled, interactions blocked for a day
+    G.flags[`crimeScene_${roomKey}`] = G.gameMinutes + 24 * 60;
     logEvt('flag','witnessTimer',    G.flags.witnessTimer);
     logEvt('flag','witnessLocation', G.flags.witnessLocation);
     logEvt('flag','witnessCrime',    G.flags.witnessCrime);
-    logEvt('flag',`crimeScene_${roomKey}`, true);
+    logEvt('flag',`crimeScene_${roomKey}`, G.flags[`crimeScene_${roomKey}`]);
     printBlank();
     if (doubleTimer) {
       print(`Someone in town heard that shot. You have some time, but not forever.`, 'narration');
@@ -4293,6 +4354,11 @@ function applyEvt(data) {
         G.trashSearched[room] = parseFloat(flagVal);
         break;
       }
+      // Top-level G properties (not G.flags) that get JSON-encoded
+      if (['aliases','savedCmds','floorItems','trashTossedItems','trashTossedAt'].includes(flagKey)) {
+        try { G[flagKey] = JSON.parse(flagVal); } catch(e) { /* leave as-is on parse failure */ }
+        break;
+      }
       // JSON-encoded flags (itemCharges, pillUseTimes, weaponAttachments, bodies, startDate)
       if (flagVal.startsWith('[') || flagVal.startsWith('{')) {
         try { G.flags[flagKey] = JSON.parse(flagVal); } catch(e) { G.flags[flagKey] = flagVal; }
@@ -4333,10 +4399,13 @@ function useDrug(drugKey, itemName) {
   const def = DRUGS[drugKey];
   if (!def) { print(`You're not sure how to use that.`); return; }
 
-  // Fentanyl = instant death
+  // Fentanyl = instant death. Deliberate — this is meant to actually end the
+  // run, not just be a scary character-level setback. The whole point is that
+  // it's real.
   if (def.lethal) {
     const idx = G.inventory.indexOf(itemName);
     if (idx !== -1) G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', itemName);
     updateStatus();
     triggerDeath(false, 'fentanyl');
     return;
@@ -4744,12 +4813,14 @@ function showRestartBtn() {
 }
 
 function fullReset() {
+  sessionGen++; // invalidates any in-flight async narrative sequence (death, epilogue, etc.)
   G.playerName=''; G.location='apartment'; G.inventory=[];
   G.karma=0; G.flags={}; G.eventLog=[];
   G.turnCount=0; G.isReplaying=false; G.gameOver=false;
   G.gameMinutes=0; G.needs={hunger:20,thirst:20,bladder:10,fatigue:15,craving:30};
   G.activeEffects={}; G.copWarnings=0; G.shopStock=null; barterSession=null; bjState=null; dialogueSession=null; combatState=null; G.playerHp=100; G.bleed=0; G.brokenArm=null; G.brokenLeg=null; G.painkillersActive=0; G.displayTime=0; G.startDate=null; G.gunMag=0; G.gunChambered=false; G.equippedWeapon=null; G.equippedArmor={head:null,body:null,legs:null,bag:null};
   G.stash=[]; G.bikeStorage=[]; G.trashSearched={};  // apartment stash / bike saddlebag / trash cooldowns
+  G.floorItems={}; G.trashTossedItems={}; G.trashTossedAt={};
   G.aliases={}; G.savedCmds={}; lastRealCommand='';
   Object.values(ROOMS).forEach(r=>r.firstVisit=true);
   ROOMS.apartment.items=['granola bar','lighter'];
@@ -4782,7 +4853,7 @@ function handleCommand(raw) {
   // ── ALIAS / SAVED COMMAND SYSTEM ──────────────────────────
   const lc = trimmed.toLowerCase();
   const RESERVED_META = ['alias','unalias','aliases','savecmd','unsavecmd','commands'];
-  const DEV_CMD_NAMES = ['testfight','devgive','devlistnpc','devlistloc','devlistitem','debug','devgo','devhelp','devlistcmd','devskip','devbuff'];
+  const DEV_CMD_NAMES = ['testfight','devgive','devlistnpc','devlistloc','devlistitem','debug','devgo','devhelp','devlistcmd','devskip','devbuff','devheal'];
 
   // Define: alias name=command   (command may be quoted, may chain with ; or "then")
   if (/^alias\s+\S+\s*=/i.test(trimmed)) {
@@ -4874,7 +4945,6 @@ function handleCommand(raw) {
     case 'go':        return cmdGo(trimmed, obj);
     case 'exit':      return cmdExit();
     case 'take':      return cmdTake(obj);
-    case 'drop':      return cmdDrop(obj);
     case 'toss':      return cmdToss(obj);
     case 'use':       return cmdUse(obj);
     case 'talk':      return cmdTalk(obj);
@@ -4898,7 +4968,6 @@ function handleCommand(raw) {
     case 'ticket':    return cmdTicket(obj);
     case 'surveil':   return cmdSurveil();
     case 'sneak':     return gatherPhysicalEvidence();
-    case 'buydrink':  return buyBarFavor();
     case 'barter':    return cmdBarter(obj);
     case 'bus':       return cmdTakeBus(obj);
     case 'fish':      return cmdFish();
@@ -4924,6 +4993,7 @@ function handleCommand(raw) {
     case 'devlistcmd':  if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdDevListCmd();
     case 'devskip':     if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdDevSkip(obj);
     case 'devbuff':     if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdDevBuff();
+    case 'devheal':     if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdDevHeal();
   }
 }
 
@@ -5403,14 +5473,31 @@ async function cmdGoSequence(destinations) {
 }
 
 function cmdGo(raw, obj) {
+  const rawInput = (obj || raw).toLowerCase().trim()
+    .replace(/^(the|to|to the|go to|head to|walk to|into|in to)\s+/,'');
+
   // Check for multiple destinations: "go downtown alley" or "go diner then bar"
+  // — but only if the WHOLE phrase doesn't already match a single (possibly
+  // multi-word) destination key first. Otherwise "go earl's operation" gets
+  // misread as two destinations ("earl's" + "operation") since a shorter key
+  // literally named "operation" also exists.
+  const wholePhraseKeys = Object.keys(DEST_MAP).sort((a,b) => b.length - a.length);
+  const rawInputWordCount = rawInput.split(/\s+/).filter(Boolean).length;
+  const wholePhraseMatch = wholePhraseKeys.some(k => {
+    if (rawInput === k) return true;
+    // Only count a substring match as "the whole phrase" if the matched key
+    // covers the same number of words as the input — otherwise a short key
+    // like "bar" would falsely swallow "go diner bar" (two real destinations).
+    if (rawInput.includes(k) && k.split(/\s+/).filter(Boolean).length === rawInputWordCount) return true;
+    return false;
+  });
   const cleaned = (obj||'').toLowerCase().trim()
     .replace(/\s+then\s+/g,' ')
     .replace(/\s+and\s+then\s+/g,' ')
     .replace(/,/g,' ');
   // Split on spaces — if multiple words each could be a destination
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length > 1) {
+  if (!wholePhraseMatch && parts.length > 1) {
     // Check if each part is a recognisable destination
     const knownDests = Object.keys(DEST_MAP);
     const allDests = parts.every(p => knownDests.some(k => k === p || k.startsWith(p)));
@@ -5419,8 +5506,7 @@ function cmdGo(raw, obj) {
       return;
     }
   }
-  const input = (obj || raw).toLowerCase().trim()
-    .replace(/^(the|to|to the|go to|head to|walk to|into|in to)\s+/,'');
+  const input = rawInput;
 
   // Exit / leave shortcuts — context-aware, goes wherever cmdExit resolves
   // (may be a sub-room's parent, not necessarily a hub)
@@ -5681,47 +5767,98 @@ function cmdTake(obj) {
   if (!canCarry(found)) { printCarryWarning(found); return; }
 
   G.inventory.push(found);
-  room.items = room.items.filter(i => i !== found);
+  const roomIdx = room.items.indexOf(found);
+  if (roomIdx !== -1) room.items.splice(roomIdx, 1);
   if (isMultiUse(found)) addMultiUseContainer(found);
   print(`You take the ${found}.`);
   logEvt('inventory_add', found);
   updateStatus();
 }
 
-// ─── DROP ─────────────────────────────────────
-function cmdDrop(obj) {
-  if (!obj) { print(`Drop what?`); return; }
-  const item = G.inventory.find(i => i.includes(obj)||obj.includes(i));
-  if (!item) { print(`You're not carrying that.`); return; }
-  const idx = G.inventory.indexOf(item);
-  G.inventory.splice(idx, 1);
-  ROOMS[G.location].items.push(item);
-  print(`You leave the ${item} here.`);
-  updateStatus();
+// ─── TOSS / DROP (merged) ──────────────────────
+// "toss X" or "drop X" — plain form drops it in the open, which litters and
+// despawns after a few hours. "toss/drop X in the trash" is clean (no penalty)
+// but the item only comes back via rummaging that specific bin later.
+const FLOOR_ITEM_DESPAWN_MINUTES = 150; // ~2.5 hours
+
+function pruneFloorItems(roomKey) {
+  if (!G.floorItems || !G.floorItems[roomKey] || !G.floorItems[roomKey].length) return;
+  const room = ROOMS[roomKey];
+  if (!room) return;
+  const stillHere = [];
+  let changed = false;
+  for (const entry of G.floorItems[roomKey]) {
+    if (G.gameMinutes - entry.droppedAt >= FLOOR_ITEM_DESPAWN_MINUTES) {
+      const idx = room.items.indexOf(entry.item);
+      if (idx !== -1) room.items.splice(idx, 1);
+      changed = true;
+    } else {
+      stillHere.push(entry);
+    }
+  }
+  G.floorItems[roomKey] = stillHere;
+  if (changed) logEvt('flag', 'floorItems', JSON.stringify(G.floorItems));
 }
 
-// ─── TOSS (permanent discard) ─────────────────
-// Rooms with a trash bin/dumpster you can actually throw something away in.
-const TRASH_CAN_ROOMS = new Set([
-  'downtown','district','alley','park','gas_station','pawn_shop','bar',
-  'laundromat','nightclub','fenix_alley','sticks','trailer_park','homeless_camp'
-]);
+function getFloorItemsNote(roomKey) {
+  pruneFloorItems(roomKey);
+  const entries = (G.floorItems && G.floorItems[roomKey]) || [];
+  if (!entries.length) return '';
+  const names = entries.map(e => e.item);
+  if (names.length === 1) return `You see ${names[0]} on the floor.`;
+  return `You see ${names.slice(0,-1).join(', ')} and ${names[names.length-1]} on the floor.`;
+}
+
+function pruneTossedTrash(roomKey) {
+  if (!G.trashTossedItems || !G.trashTossedItems[roomKey] || !G.trashTossedItems[roomKey].length) return;
+  const tossedAt = (G.trashTossedAt && G.trashTossedAt[roomKey]) || 0;
+  if (G.gameMinutes - tossedAt >= 24 * 60) {
+    G.trashTossedItems[roomKey] = [];
+    logEvt('flag', 'trashTossedItems', JSON.stringify(G.trashTossedItems));
+  }
+}
+
+function tossItemIntoTrash(roomKey, item) {
+  G.trashTossedItems = G.trashTossedItems || {};
+  G.trashTossedItems[roomKey] = G.trashTossedItems[roomKey] || [];
+  G.trashTossedItems[roomKey].push(item);
+  G.trashTossedAt = G.trashTossedAt || {};
+  G.trashTossedAt[roomKey] = G.gameMinutes;
+  logEvt('flag', 'trashTossedItems', JSON.stringify(G.trashTossedItems));
+  logEvt('flag', 'trashTossedAt', JSON.stringify(G.trashTossedAt));
+}
+
 function cmdToss(obj) {
   if (!obj) { print(`Toss what?`); return; }
-  const item = G.inventory.find(i => i.includes(obj)||obj.includes(i));
+
+  // Detect "... in the trash/bin/garbage/dumpster" suffix
+  const trashMatch = obj.match(/^(.+?)\s+in\s+(?:the\s+)?(?:trash|bin|garbage|dumpster)$/i);
+  const itemQuery  = (trashMatch ? trashMatch[1] : obj).trim();
+  const wantsTrash = !!trashMatch;
+
+  const item = G.inventory.find(i => i.includes(itemQuery) || itemQuery.includes(i));
   if (!item) { print(`You're not carrying that.`); return; }
   const idx = G.inventory.indexOf(item);
-  G.inventory.splice(idx, 1);
-  logEvt('inventory_remove', item);
 
-  if (TRASH_CAN_ROOMS.has(G.location)) {
-    print(`You toss the ${item} in the trash. Gone for good.`);
+  if (wantsTrash) {
+    if (!canRummageHere()) { print(`There's no trash can here.`); return; }
+    G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', item);
+    tossItemIntoTrash(G.location, item);
+    print(`You toss the ${item} in the trash. Gone, for now — unless somebody digs it back out.`);
     updateStatus();
     return;
   }
 
-  // No bin nearby — you can still toss it, but it's littering
-  print(`No trash can around, so you just chuck the ${item} on the ground. Somebody definitely clocks it.`);
+  // Plain drop — out in the open, which means littering
+  G.inventory.splice(idx, 1);
+  logEvt('inventory_remove', item);
+  ROOMS[G.location].items.push(item);
+  G.floorItems = G.floorItems || {};
+  G.floorItems[G.location] = G.floorItems[G.location] || [];
+  G.floorItems[G.location].push({ item, droppedAt: G.gameMinutes });
+  logEvt('flag', 'floorItems', JSON.stringify(G.floorItems));
+  print(`You drop the ${item} out in the open. Somebody definitely clocks it.`);
   illegalAct('littering', 3);
   adjustKarma(-1);
   logEvt('karma', G.karma);
@@ -6080,7 +6217,7 @@ function cmdTalk(obj) {
   const r = obj.toLowerCase();
 
   // Crime scene — NPCs fled, no interactions
-  if (G.flags[`crimeScene_${G.location}`]) {
+  if (isCrimeScene(G.location)) {
     print(`There's nobody here. The room cleared out after what happened.`);
     return;
   }
@@ -6268,6 +6405,12 @@ function cmdTalk(obj) {
     const h = getGameHour();
     if (h < 21 && h >= 5) { print(`There's nobody in the alley right now. Come back tonight.`); return; }
     cmdBarter('manny'); return;
+  }
+
+  // Dale — jailed
+  if ((r.includes('dale') || r.includes('guy at the end') || r.includes('nervous')) && G.location === 'jail_cells' && G.flags.daleJailed) {
+    print(`"Knee still hurts," Dale says, from the bunk. "Just so you know."`);
+    return;
   }
 
   // Dale — bar regular, warrant target
@@ -6971,16 +7114,30 @@ function talkCuz() {
     }
   }
 
-  const options = [
-    { label: "Ask his name", action: () => {
+  const options = [];
+  if (!G.flags.askedCuzNameOnce) {
+    options.push({ label: "Ask his name", action: () => {
       if (earlAround) {
         print(`He starts to answer. Gets one syllable out.`);
         print(`"CUZ." Earl's voice, from somewhere. Always from somewhere.`);
         print(`Cuz closes his mouth. Holds up his hands. That's the answer.`);
       } else {
-        print(`"Cuz," he says again, happy to repeat it. "Well — it's not really my name. It's just what everybody calls me. Even I kind of forgot the other one."`);
+        print(`"Cuz," he says again, happy to repeat it. "Well — it's not really my name. It's just what everybody calls me."`);
+        G.flags.askedCuzNameOnce = true;
+        logEvt('flag', 'askedCuzNameOnce', true);
       }
-    }},
+    }});
+  } else if (!G.flags.knowsCuzRealName) {
+    options.push({ label: "Ask his real name", action: () => {
+      print(`Cuz blinks. Then grins — really grins, like it's been a while since anyone bothered.`);
+      print(`"...Donny," he says. "It's Donny." He says it again, quieter, testing how it sounds out loud. "Nobody really asks that."`);
+      G.flags.knowsCuzRealName = true;
+      logEvt('flag', 'knowsCuzRealName', true);
+      adjustKarma(3);
+      logEvt('karma', G.karma);
+    }});
+  }
+  options.push(
     { label: "Ask what he does here", action: () => {
       if (earlAround) {
         print(`He gestures broadly at everything. Then specifically at Earl's trailer. Then he shrugs.`);
@@ -6988,8 +7145,8 @@ function talkCuz() {
       } else {
         print(`"Help out. Watch the place. Earl says I'm real good at watching the place," Cuz says, sounding proud of this.`);
       }
-    }},
-  ];
+    }}
+  );
 
   if (!earlAround) {
     options.push({ label: "Ask what Earl's operation is / what that smell is", action: () => {
@@ -7597,11 +7754,23 @@ function cmdHelp() {
   print(`HOW TO PLAY`,'room-title');
   printBlank();
   print(`Type what you want to do and press Enter. The buttons above are shortcuts.`);
+  print(`Chain several commands at once with a semicolon.`);
+  print(`Example: "exit; go bar; talk rosario"`);
   printBlank();
-  print(`Examples: "go north"  "look around"  "talk to lou"  "take the cash"  "eat granola bar"`);
+  print(`Most verbs work short or long — whichever feels natural.`);
+  print(`Example: "look" or "look around"`);
+  print(`Example: "talk lou" or "talk to lou"`);
+  print(`Example: "take the cash"  "eat granola bar"  "go bar"`);
   printBlank();
-  print(`SHORTHAND: "alias name=command" makes "name" run that command — chain several with`);
-  print(`a semicolon, like alias watjerk='drink water; eat jerky'. "aliases" lists them, "unalias name" removes one.`);
+  print(`Look at a specific item you're carrying for more detail on it.`);
+  print(`Example: "look at ticket book"`);
+  printBlank();
+  print(`Some items get used directly on a person or another item.`);
+  print(`Example: "use warrant on dale"`);
+  printBlank();
+  print(`SHORTHAND: "alias name=command" makes "name" run that command permanently.`);
+  print(`Example: alias watjerk='drink water; eat jerky'`);
+  print(`"aliases" lists them, "unalias name" removes one.`);
   print(`"savecmd label" saves your last command to the commands menu for one-click reuse.`);
   printBlank();
   print(`SAVE: type "history" or click "save log". Copy the text and paste into a .txt file.`);
@@ -7614,8 +7783,10 @@ function cmdHelp() {
   print(`through all of this step by step if you'd rather click than type.`);
   printBlank();
   print(`Bartering`, 'subheading');
-  print(`"buy [item]", "sell [item]", "offer [your item] for [their item]", "steal [item]",`);
-  print(`and "done" when you're finished.`);
+  print(`"buy [item]", "sell [item]", "offer [your item(s)] for [their item(s)]", "steal [item]",`);
+  print(`and "done" when you're finished. All of these take multiple items separated by commas,`);
+  print(`with an optional trailing number for quantity — both sides of an offer, too.`);
+  print(`Example: "buy water 2, pocket knife"`);
   printDiv();
 }
 
@@ -8178,6 +8349,11 @@ const WEAPONS = {
   'baseball bat':{ accuracy: 0.80, damage: [20,35], lethalChance: 0.07, bleedChance: 0.06, bleedSev: 1, label: 'baseball bat',  ranged: false },
   'pocket knife':{ accuracy: 0.75, damage: [25,45], lethalChance: 0.45, bleedChance: 0.70, bleedSev: 3, label: 'pocket knife',  ranged: false },
   blok19:        { accuracy: 0.70, damage: [45,75], lethalChance: 0.65, bleedChance: 0.35, bleedSev: 2, label: 'Blok-19',     ranged: true  },
+  // NPC-only — Deputy Rodriguez's sidearm, revealed in the shootout ending.
+  // Deliberately far above player-tier weapons; paired with his hitBonus/dodgeBonus
+  // gear (aviator sunglasses / lucky sneakers) he's a completely different fighter
+  // than the sleeping deputy the rest of the game shows you.
+  rodriguez44:   { accuracy: 0.90, damage: [90,140], lethalChance: 0.6, bleedChance: 0.4, bleedSev: 3, label: "Rodriguez's .44", ranged: true },
 };
 
 // Bleed tick damage per severity per minute
@@ -8671,17 +8847,23 @@ function combatEnemyWentDown(e) {
     print(`${e.name} goes down. Dead.`, 'failure');
     G.flags[`killed_${e.name.replace(/\s+/g,'_')}`] = true;
     spawnBody(Object.keys(NPCS).find(k=>NPCS[k].name===e.name)||'default', e.name, G.location);
-    // Suppressor reduces heat — fewer witnesses heard anything
-    const suppressed = hasSuppressor(getPlayerWeapon());
-    const homicideHeat = suppressed ? 10 : 30;
-    if (suppressed && !G.isReplaying) {
-      print(`The suppressor kept it quiet. Less chance anyone heard that.`, 'system');
-    }
-    illegalAct('homicide', homicideHeat);
     combatState.karmaChange += combatState.playerInitiated ? -25 : -5;
-    // Witness reaction fires after combat ends — stored for combatEnd to trigger
-    combatState.pendingWitnessRoom    = G.location;
-    combatState.pendingWitnessSuppressed = suppressed;
+    if (G.flags.combatPoliceProtected) {
+      G.flags.policeProcedureRoom = G.location;
+      logEvt('flag', 'policeProcedureRoom', G.location);
+    }
+    if (!G.flags.combatPoliceProtected) {
+      // Suppressor reduces heat — fewer witnesses heard anything
+      const suppressed = hasSuppressor(getPlayerWeapon());
+      const homicideHeat = suppressed ? 10 : 30;
+      if (suppressed && !G.isReplaying) {
+        print(`The suppressor kept it quiet. Less chance anyone heard that.`, 'system');
+      }
+      illegalAct('homicide', homicideHeat);
+      // Witness reaction fires after combat ends — stored for combatEnd to trigger
+      combatState.pendingWitnessRoom    = G.location;
+      combatState.pendingWitnessSuppressed = suppressed;
+    }
   } else {
     print(`${e.name} goes down and stays down. Breathing, probably.`, 'system');
     combatState.karmaChange += combatState.playerInitiated ? -8 : 3;
@@ -9396,6 +9578,15 @@ async function combatEnd(result) {
       }
     }
   } else if (result === 'enemy_killed_player') {
+    if (G.flags.transportCombatActive) {
+      // One-off scripted save — this is specific to this fight only, not a
+      // general mechanic. Rodriguez wakes up just in time.
+      combatState = null;
+      refreshContextButtons();
+      printBlank();
+      runTransportRodriguezSave();
+      return;
+    }
     adjustKarma(karma);
     combatState = null;
     refreshContextButtons();
@@ -9419,10 +9610,41 @@ async function combatEnd(result) {
     checkTransportOutcome();
     checkArrestOutcome();
     checkBustCombatOutcome();
+    checkWitnessCombatOutcome();
   }
 }
 
-// ── STASH (apartment safe storage) ───────────────────────────
+// One-off scripted save — specific to the prisoner transport fight only.
+// If the player loses that fight, Rodriguez saves them at the last second
+// rather than the game ending. Not a general mechanic; not reused elsewhere.
+async function runTransportRodriguezSave() {
+  print(`Everything starts to go soft at the edges.`, 'narration');
+  await sleep(700);
+  print(`You're aware of things happening without being entirely sure they're happening to you.`, 'narration');
+  await sleep(700);
+  print(`You think — can't be sure, everything's blurring — that Rodriguez sits up. That he moves fast for someone who was just asleep. That there's a sound like a karate chop, and then a much smaller sound that might be the prisoner.`, 'narration');
+  await sleep(900);
+  print(`You're not sure any of that actually happened. You're not sure of much right now.`, 'narration');
+  await sleep(800);
+  printBlank();
+  print(`...`, 'system');
+  await sleep(900);
+  printBlank();
+  print(`You come to back at the police station. Everything hurts in a specific, itemized way.`, 'narration');
+  await sleep(700);
+  print(`Rodriguez is in the corner, looking extremely pleased with himself and not explaining why.`, 'narration');
+
+  G.playerHp = 10;
+  logEvt('flag', 'playerHp', 10);
+  G.flags.transportCombatActive = false;
+  G.flags.combatPoliceProtected = false;
+  logEvt('flag', 'transportCombatActive', false);
+  G.flags.transportStage = 2;
+  logEvt('flag', 'transportStage', 2);
+  G.location = 'police_station';
+  logEvt('location', 'police_station');
+  printRoom('police_station', true);
+}
 // G.stash = array of item strings, unlimited capacity.
 // Only accessible in the apartment.
 //
@@ -9600,6 +9822,11 @@ const TRASH_LOOT = [
 // also hinting to the player they can rummage.  Called from room descs.
 function trashBinDesc(roomId) {
   if (!TRASH_BIN_ROOMS.has(roomId)) return '';
+  pruneTossedTrash(roomId);
+  const hasTossed = G.trashTossedItems && G.trashTossedItems[roomId] && G.trashTossedItems[roomId].length;
+  if (hasTossed) {
+    return `There's a trash bin here. You know there's something specific in there worth digging back out.`;
+  }
   const searched = G.trashSearched && G.trashSearched[roomId] !== undefined;
   const respawned = trashRespawned(roomId);
   if (searched && !respawned) {
@@ -9635,6 +9862,31 @@ function cmdRummage() {
       `This isn't the kind of place that has bins.`,
     ];
     print(noTrash[G.turnCount % noTrash.length]);
+    return;
+  }
+
+  // A tossed item waiting here takes priority over the normal cooldown —
+  // it yields exactly that item and nothing else, even if you already
+  // rummaged this bin today.
+  pruneTossedTrash(G.location);
+  const tossed = (G.trashTossedItems && G.trashTossedItems[G.location]) || [];
+  if (tossed.length) {
+    print(`You dig through the bin and find exactly what you're looking for.`);
+    printBlank();
+    const added = [];
+    const tooFull = [];
+    for (const item of tossed) {
+      if (canCarry(item)) { G.inventory.push(item); logEvt('inventory_add', item); added.push(item); }
+      else tooFull.push(item);
+    }
+    G.trashTossedItems[G.location] = [];
+    logEvt('flag', 'trashTossedItems', JSON.stringify(G.trashTossedItems));
+    G.trashSearched[G.location] = G.gameMinutes;
+    logEvt('flag', `trashSearched_${G.location}`, G.gameMinutes);
+    advanceTime(10);
+    if (added.length) print(`You find: ${added.join(', ')}.`);
+    if (tooFull.length) print(`You spot ${tooFull.join(', ')} but you're carrying too much to take it.`, 'system');
+    updateStatus();
     return;
   }
 
@@ -9719,11 +9971,12 @@ function cmdDevGive(raw) {
   const itemStr  = qtyMatch ? qtyMatch[1].trim() : input;
   const qty      = qtyMatch ? Math.min(parseInt(qtyMatch[2]), 999) : 1;
 
-  // Fuzzy-match against known items: ITEM_VALUES keys + WEAPONS + CONSUMABLES
+  // Fuzzy-match against known items: ITEM_VALUES keys + WEAPONS + CONSUMABLES + ARMOR
   const allItems = [
     ...Object.keys(ITEM_VALUES),
     ...Object.keys(WEAPONS),
     ...Object.keys(CONSUMABLES || {}),
+    ...Object.keys(ARMOR),
   ];
   const match = allItems.find(i => i === itemStr) ||
                 allItems.find(i => i.includes(itemStr) || itemStr.includes(i));
@@ -10140,13 +10393,18 @@ function cmdDevHelp() {
     },
     {
       cmd: 'devskip',
-      desc: 'Advance in-game time. Accepts Nd (days) and Nm (minutes), combinable.',
-      example: 'devskip 1d 30m  |  devskip 2d  |  devskip 90m',
+      desc: 'Advance in-game time. Accepts Nd (days), Nh (hours), and Nm (minutes), combinable.',
+      example: 'devskip 1d 2h 30m  |  devskip 2d  |  devskip 90m',
     },
     {
       cmd: 'devbuff',
       desc: 'Freeze all needs (hunger/thirst/bladder/fatigue/craving) for 2 in-game days.',
       example: 'devbuff',
+    },
+    {
+      cmd: 'devheal',
+      desc: 'Reset all needs to 0, restore HP to full, clear bleed and heal broken limbs.',
+      example: 'devheal',
     },
     {
       cmd: 'devhelp',
@@ -10255,6 +10513,28 @@ function cmdDevBuff() {
   logEvt('flag', 'devBuffUntil', G.flags.devBuffUntil);
   print(`[DEV] Needs frozen (hunger/thirst/bladder/fatigue/craving) for 2 in-game days.`, 'system');
   print(`[DEV] Freeze ends at game minute ${G.flags.devBuffUntil}.`, 'system');
+}
+
+function cmdDevHeal() {
+  G.needs.hunger = 0;
+  G.needs.thirst = 0;
+  G.needs.bladder = 0;
+  G.needs.fatigue = 0;
+  G.needs.craving = 0;
+  G.playerHp = 100;
+  if (combatState) combatState.playerHp = 100;
+  G.bleed = 0;
+  G.brokenArm = null;
+  G.brokenLeg = null;
+  G.painkillersActive = 0;
+  logEvt('flag', 'hunger', 0); logEvt('flag', 'thirst', 0); logEvt('flag', 'bladder', 0);
+  logEvt('flag', 'fatigue', 0); logEvt('flag', 'craving', 0);
+  logEvt('flag', 'playerHp', 100);
+  logEvt('flag', 'bleed', 0);
+  logEvt('flag', 'brokenArm', null);
+  logEvt('flag', 'brokenLeg', null);
+  print(`[DEV] Needs reset to 0, HP restored to 100, bleed cleared, broken limbs healed.`, 'system');
+  updateStatus();
 }
 
 // Takes exact room key (as shown in devlistloc). No fuzzy matching.
@@ -10737,6 +11017,11 @@ function cmdBathroom() {
 //  NEIGHBOR DOOR HANDLERS
 // ═══════════════════════════════════════════════
 function handleNeighborKnock(door) {
+  if (door === '4f' && G.flags.knowsBartenderHome && G.flags.knowsLaSenora) {
+    confrontBartenderAtHome();
+    return;
+  }
+
   const configs = {
     '4c': {
       flag: 'knocked4c', metFlag: 'met4c', name: 'Terry',
@@ -10822,8 +11107,8 @@ function talkSheriff() {
   ];
 
   // Police route — mission offer slots in based on current tier
-  const policeOpt = getPoliceRouteOption();
-  if (policeOpt) opts.unshift(policeOpt);
+  const policeOpts = getPoliceRouteOption();
+  if (policeOpts) opts.unshift(...policeOpts);
 
   openDialogue('sheriff_dodd', greeting, opts);
 }
@@ -10833,6 +11118,19 @@ function talkDeputy() {
     G.flags.metDeputy = true;
     print(`Deputy Rodriguez is asleep at a 45-degree angle that suggests long practice. You try to get his attention. He opens one eye.`);
     print(`"Mmh. Yeah. Deputy Rodriguez." The eye closes. "Hed handles the paperwork." He is asleep within four seconds.`);
+    return;
+  }
+  if (G.flags.hedRecommendedPressure && !G.flags.knowsRodriguezWarrant) {
+    print(`Rodriguez is asleep, same as always. But there's a folder on the desk next to him, in his handwriting — unmistakable, all caps, pressed too hard with the pen.`);
+    print(`Minor infractions. A couple of outstanding fines. And paperclipped right on top: a domestic dispute complaint that looks suspiciously fresh — like it was drafted this week, not pulled from a filing cabinet.`);
+    print(`"...Damn," you think. "Rodriguez did his homework."`);
+    print(`Maybe if things go sideways, you can use this to put some heat on the guy.`);
+    G.flags.knowsRodriguezWarrant = true;
+    logEvt('flag', 'knowsRodriguezWarrant', true);
+    return;
+  }
+  if (G.flags.knowsRodriguezWarrant) {
+    print(`The folder's still there. You already know what's in it.`);
     return;
   }
   // Rodriguez gives one-word answers if awake, otherwise snores
@@ -10864,67 +11162,95 @@ function getPoliceRouteOption() {
   if (G.flags.policeMissionActive === 'tickets') {
     const n = G.flags.ticketsWritten || 0;
     if (n >= 3) {
-      return { label: "Turn in the ticket book", action: () => checkMission1Complete() };
+      return [{ label: "Turn in the ticket book", action: () => checkMission1Complete() }];
     }
-    return { label: "Ask about the job", action: () => print(`"You got ${n} of 3 tickets written," Hed says, not looking up. "Get to it."`) };
+    return [{ label: "Ask about the job", action: () => print(`"You got ${n} of 3 tickets written," Hed says, not looking up. "Get to it."`) }];
   }
 
   if (G.flags.policeMissionActive === 'noise') {
-    return { label: "Ask about the job", action: () => print(`"Trailer park," Hed says. "Noise complaint. Go deal with it."`) };
+    return [{ label: "Ask about the job", action: () => print(`"Trailer park," Hed says. "Noise complaint. Go deal with it."`) }];
   }
 
   if (tier === 0) {
-    return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM1',
-      action: () => offerMission1() };
+    return [{ label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM1',
+      action: () => offerMission1() }];
   }
   if (tier === 1) {
-    return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM2',
-      action: () => offerMission2() };
+    return [{ label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM2',
+      action: () => offerMission2() }];
   }
   if (tier === 2) {
     // Time-gated — check if enough time has passed since mission 2 completed
     if (G.flags.mission3AvailAt && G.gameMinutes < G.flags.mission3AvailAt) {
-      return { label: "Ask if he has more work", action: () => {
+      return [{ label: "Ask if he has more work", action: () => {
         const daysLeft = Math.ceil((G.flags.mission3AvailAt - G.gameMinutes) / (24*60));
         print(`Hed shakes his head. "Not yet. Come back in ${daysLeft === 1 ? 'a day or so' : 'a couple days'}."`);
         print(`He goes back to whatever he was doing, which appears to be nothing.`);
-      }};
+      }}];
     }
-    return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM3',
-      action: () => offerMission3() };
+    return [{ label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM3',
+      action: () => offerMission3() }];
   }
   if (tier === 3) {
     if (G.flags.mission4AvailAt && G.gameMinutes < G.flags.mission4AvailAt) {
-      return { label: "Ask if he has more work", action: () => {
+      return [{ label: "Ask if he has more work", action: () => {
         const daysLeft = Math.ceil((G.flags.mission4AvailAt - G.gameMinutes) / (24*60));
         print(`Hed shakes his head. "Not yet. Come back in ${daysLeft === 1 ? 'a day or so' : 'a couple days'}."`);
         print(`He goes back to whatever he was doing.`);
-      }};
+      }}];
     }
-    return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM4',
-      action: () => offerMission4() };
+    return [{ label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM4',
+      action: () => offerMission4() }];
   }
   if (tier === 4 && !G.flags.bustInvestigationStarted) {
     if (G.flags.mission5AvailAt && G.gameMinutes < G.flags.mission5AvailAt) {
-      return { label: "Ask if he has more work", action: () => {
+      return [{ label: "Ask if he has more work", action: () => {
         const daysLeft = Math.ceil((G.flags.mission5AvailAt - G.gameMinutes) / (24*60));
         print(`Hed shakes his head. "Not yet. Something like this takes planning. Come back in ${daysLeft === 1 ? 'a day or so' : 'a couple days'}."`);
         print(`He goes back to whatever he was doing.`);
-      }};
+      }}];
     }
-    return { label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM5',
-      action: () => offerMission5() };
+    return [{ label: "Ask if he needs help with anything", once: true, seenKey: 'dlg_hed_offerM5',
+      action: () => offerMission5() }];
   }
-  if (tier === 4 && G.flags.bustInvestigationStarted && !G.flags.bustReady) {
-    return { label: "Report on the investigation", action: () => reportBustProgress() };
+  if (tier === 4 && G.flags.bustInvestigationStarted) {
+    const opts = [{ label: "Report on the investigation", action: () => reportBustProgress() }];
+    const n = G.flags.bustEvidence || 0;
+    if (n > 0) {
+      opts.push({ label: "Say you're ready for the bust", action: () => beginBustFinal() });
+    }
+    return opts;
   }
-  if (tier === 4 && G.flags.bustReady) {
-    return { label: "Say you're ready for the bust", action: () => beginBustFinal() };
+  if (tier === 5 && !G.flags.mission5Reported) {
+    return [{ label: "Tell him how the bust went", action: () => checkMission5Complete() }];
   }
   if (tier >= 5 && !G.flags.tookEvidenceFentanyl) {
-    return { label: "Ask about the evidence locker", action: () => offerEvidenceLocker() };
+    return [{ label: "Ask about the evidence locker", action: () => offerEvidenceLocker() }];
   }
   return null; // route complete, nothing left to offer
+}
+
+function checkMission5Complete() {
+  if (G.flags.mission5Reported) return false;
+  G.flags.mission5Reported = true;
+  logEvt('flag', 'mission5Reported', true);
+
+  if (G.flags.bustOutcomeResolved === 'shootout') {
+    print(`"It got loud," you say. "But La Señora's operation is done, or close to it."`);
+    print(`Hed whistles low. "Rodriguez mentioned a folding chair." He doesn't ask for details beyond that. "Hell of a way to close it out. Good work."`);
+  } else if (G.flags.bustOutcomeResolved === 'confrontation') {
+    print(`"Clean-ish," you say. "Dennis didn't put up much of a fight. La Señora went quiet once he saw the evidence."`);
+    print(`Hed nods, actually looking a little impressed. "That's how you're supposed to do this job. Good work."`);
+  } else {
+    print(`"No fight. No drama," you say.`);
+    print(`Hed leans back. "That's the way I like to hear it." He seems genuinely pleased. "Good work. Best work you've done for me."`);
+  }
+  receiveCash(50);
+  adjustKarma(4);
+  logEvt('karma', G.karma);
+  printBlank();
+  print(`"Alright," Hed says. "That's the big one. Not much left after that but paperwork."`, 'special');
+  return true;
 }
 
 // ── MISSION 1: PARKING TICKETS ──────────────────────────────
@@ -11194,6 +11520,7 @@ async function startPrisonerTransport() {
     logEvt('flag', 'transportStage', 1);
     advanceTime(20);
     G.flags.transportCombatActive = true;
+    G.flags.combatPoliceProtected = true;
     logEvt('flag', 'transportCombatActive', true);
     startCombat('the prisoner', 'fists', false, false);
     return true;
@@ -11231,6 +11558,7 @@ async function startPrisonerTransport() {
 
   // Combat — prisoner attacks (enemy goes first since they initiated)
   G.flags.transportCombatActive = true;
+  G.flags.combatPoliceProtected = true;
   logEvt('flag', 'transportCombatActive', true);
   startCombat('the prisoner', 'fists', false, false);
   return true;
@@ -11282,15 +11610,23 @@ function checkMission3Complete() {
   if (G.flags.policeMissionActive !== 'transport') return false;
   if (G.flags.transportStage !== 2) return false;
 
-  print(`"Heard it got interesting," Hed says. He doesn't ask for details, which is its own kind of compliment.`);
-  print(`"Good work. Didn't expect you to actually handle it."`);
-  receiveCash(25);
+  const prisonerKilled = G.flags['killed_the_prisoner'];
+  if (prisonerKilled) {
+    print(`"He's dead," you say.`);
+    print(`Hed sets down his sandwich and looks at you for a long second. "...Course he is." He rubs his face. "That's paperwork now. Real paperwork, not the fun kind."`);
+    print(`He doesn't ask for details. "Guess I'm not paying you for that one." He doesn't sound broken up about the money — more like he considers it a fair trade for not having to explain the rest to anybody.`);
+    print(`"Still useful, though. I'll find you something else."`, 'special');
+  } else {
+    print(`"Heard it got interesting," Hed says. He doesn't ask for details, which is its own kind of compliment.`);
+    print(`"Good work. Didn't expect you to actually handle it."`);
+    receiveCash(25);
+    adjustKarma(3);
+    logEvt('karma', G.karma);
+  }
   G.flags.policeMissionActive = null;
   G.flags.policeTier = 3;
   logEvt('flag', 'policeMissionActive', null);
   logEvt('flag', 'policeTier', 3);
-  adjustKarma(3);
-  logEvt('karma', G.karma);
   // Time-gate: next mission not available for 2 days
   G.flags.mission4AvailAt = G.gameMinutes + 2 * 24 * 60;
   logEvt('flag', 'mission4AvailAt', G.flags.mission4AvailAt);
@@ -11301,7 +11637,7 @@ function checkMission3Complete() {
   }
   G.flags['killed_the_prisoner'] = false;
   logEvt('flag', 'killed_the_prisoner', false);
-  print(`"Tell you what," Hed says, almost thoughtfully. "You've been useful. Come back, I might have something better."`, 'special');
+  if (!prisonerKilled) print(`"Tell you what," Hed says, almost thoughtfully. "You've been useful. Come back, I might have something better."`, 'special');
   return true;
 }
 
@@ -11346,7 +11682,9 @@ function encounterArrestTarget() {
       print(`A pause.`);
       print(`"Fine," he says, without much energy left. "Fine." He finishes his drink. "Let's go."`, 'special');
       G.flags.arrestComplete = 'peaceful';
+      G.flags.daleJailed = true;
       logEvt('flag', 'arrestComplete', 'peaceful');
+      logEvt('flag', 'daleJailed', true);
       closeDialogue();
     }});
   }
@@ -11360,7 +11698,9 @@ function encounterArrestTarget() {
       print(`He's moving for the door before you finish the sentence, limping at a speed that suggests he's done this before.`);
       print(`A couple of heads turn. Dale stares straight ahead. His face is the color of a fire hydrant.`);
       G.flags.arrestComplete = 'peaceful';
+      G.flags.daleJailed = true;
       logEvt('flag', 'arrestComplete', 'peaceful');
+      logEvt('flag', 'daleJailed', true);
       closeDialogue();
     }});
   }
@@ -11372,6 +11712,7 @@ function encounterArrestTarget() {
     print(`"Yeah," he says. "Me neither." And then he's moving.`);
     print(`He's faster than the knee looks. You catch him before he hits the door.`);
     G.flags.arrestCombatActive = true;
+    G.flags.combatPoliceProtected = true;
     logEvt('flag', 'arrestCombatActive', true);
     closeDialogue();
     startCombat('Dale', 'fists', false, true);
@@ -11380,6 +11721,7 @@ function encounterArrestTarget() {
   opts.push({ label: "Grab him before he can run", action: () => {
     print(`You don't give him time to think about it.`);
     G.flags.arrestCombatActive = true;
+    G.flags.combatPoliceProtected = true;
     logEvt('flag', 'arrestCombatActive', true);
     closeDialogue();
     startCombat('Dale', 'fists', true, true);
@@ -11404,17 +11746,48 @@ function checkArrestOutcome() {
   if (!G.flags.arrestCombatActive) return;
   if (combatState) return;
   G.flags.arrestCombatActive = false;
+  G.flags.combatPoliceProtected = false;
   logEvt('flag', 'arrestCombatActive', false);
   if (G.gameOver) return;
 
-  print(`Dale's on the floor. You get the cuffs on before he recovers enough to argue.`);
-  G.flags.arrestComplete = 'forced';
-  logEvt('flag', 'arrestComplete', 'forced');
+  if (isNpcDead('dale')) {
+    print(`Dale's on the floor. Not breathing.`, 'failure');
+    print(`You call it in. Nobody seems especially surprised.`, 'narration');
+    // Delete the body — this gets processed and cleaned up, not left lying around
+    if (G.flags.bodies && G.flags.bodies['bar']) {
+      G.flags.bodies['bar'] = G.flags.bodies['bar'].filter(b => b.npcKey !== 'dale');
+      logEvt('flag', 'bodies', JSON.stringify(G.flags.bodies));
+    }
+    G.flags.arrestComplete = 'killed';
+    logEvt('flag', 'arrestComplete', 'killed');
+  } else {
+    print(`Dale's on the floor. You get the cuffs on before he recovers enough to argue.`);
+    G.flags.arrestComplete = 'forced';
+    logEvt('flag', 'arrestComplete', 'forced');
+    G.flags.daleJailed = true;
+    logEvt('flag', 'daleJailed', true);
+  }
 }
 
 function checkMission4Complete() {
   if (G.flags.policeMissionActive !== 'arrest') return false;
   if (!G.flags.arrestComplete) return false;
+
+  if (G.flags.arrestComplete === 'killed') {
+    print(`"He's dead," you say.`);
+    print(`Hed sets down his sandwich and looks at you for a long second. "...Course he is." He rubs his face. "That's paperwork now. Real paperwork, not the fun kind."`);
+    print(`He doesn't ask for details. "Guess I'm not paying you for that one." He doesn't sound broken up about the money — more like he considers it a fair trade for not having to explain the rest to anybody.`);
+    print(`"Still useful, though. I'll find you something else."`, 'special');
+    G.flags.policeMissionActive = null;
+    G.flags.policeTier = 4;
+    logEvt('flag', 'policeMissionActive', null);
+    logEvt('flag', 'policeTier', 4);
+    G.flags.mission5AvailAt = G.gameMinutes + 2 * 24 * 60;
+    logEvt('flag', 'mission5AvailAt', G.flags.mission5AvailAt);
+    const wIdx2 = G.inventory.indexOf('warrant');
+    if (wIdx2 !== -1) { G.inventory.splice(wIdx2, 1); logEvt('inventory_remove', 'warrant'); }
+    return true;
+  }
 
   if (G.flags.arrestComplete === 'peaceful') {
     print(`"Brought him in clean," you say.`);
@@ -11453,7 +11826,8 @@ function offerMission5() {
   print(`"Don't get yourself killed about it. That part's not optional."`);
   G.flags.bustInvestigationStarted = true;
   G.flags.bustEvidence = 0;
-  printWithHint(`You'll need something concrete before you take this back to Hed. Start with the nightclub — talk to the bartender, sneak toward the back office, or watch the place a while.`, ['talk to bartender','sneak','surveil']);
+  printBlank();
+  print(`"Start wherever makes sense," Hed adds, already looking back down at his desk. "People talk. Places tell you things if you watch long enough. Paper trails exist for a reason. You'll figure it out."`);
 }
 
 // Five ways to gather evidence — called from various locations/interactions
@@ -11484,116 +11858,369 @@ function cmdSurveil() {
   if (!G.flags.bustInvestigationStarted) { print(`You don't have a reason to be watching anyone.`); return; }
   if (G.flags.evidence_surveillance) { print(`You've already got what you're going to get from watching the place.`); return; }
   print(`You spend a few hours watching the club from across the street. Deliveries, timing, who comes and goes.`);
-  print(`A pattern starts to take shape.`);
   advanceTime(90);
+
+  if (G.flags.knowsLaSenora) {
+    print(`La Señora comes and goes on a schedule that only looks random if you're not paying attention — usually after dark, always with the same two guards flanking her.`);
+  } else {
+    print(`There's a figure who clearly runs the place — hard to say if it's a very tall woman or a man who's decided gender is more of a suggestion, but either way, two guards don't leave their side the whole time.`);
+  }
+  print(`Closer to the street, the bartender steps out for a smoke and takes a call. You're close enough to catch the tail end of it.`);
+  print(`"...yeah, I'll stop by Wally's and pick up some beer on the way to the apartment. Nah, I'm good, just tired." He hangs up, stretches, goes back inside.`);
+  G.flags.knowsBartenderHome = true;
+  logEvt('flag', 'knowsBartenderHome', true);
   gatherEvidence('surveillance');
 }
 
-// Bartender testimony — requires having talked to the nightclub bartender
-// enough times first (uses an existing relationship flag if present, else
-// just requires being in the nightclub during investigation)
 function gatherBartenderTestimony() {
   if (!G.flags.bustInvestigationStarted) { print(`No reason to be asking him anything like that.`); return; }
-  if (G.flags.evidence_bartender) { print(`He already told you what he's going to tell you.`); return; }
-  if (G.location !== 'nightclub') { print(`He's not here.`); return; }
-  print(`You've been coming around enough that the bartender's stopped pretending not to notice you.`);
-  print(`"I don't know anything," he says, wiping a glass that's already clean. Then, quieter: "I don't know anything official."`);
-  print(`He tells you enough anyway.`);
-  gatherEvidence('bartender');
+  if (G.flags.evidence_bartender) { print(`He already told you everything he's going to.`); return; }
+  print(`"I don't know anything," the bartender says, wiping a glass that's already clean. "And even if I did — not here."`);
+  print(`He doesn't look up again.`);
 }
 
-// Financial records — courthouse clerk, requires a small bribe or enough charm
+// The real conversation — only happens once you know who he is and where he lives.
+function bartenderHasWeaponLeverage() {
+  const pw = getPlayerWeapon();
+  return pw === 'pocket knife' || pw === 'baseball bat' ||
+         G.inventory.includes('pocket knife') || G.inventory.includes('baseball bat');
+}
+
+function bartenderSuccess() {
+  print(`He tells you how the money actually moves — not the version on paper, the real version. Who gets paid, who gets skipped, how the back room really operates.`);
+  print(`"And look — the office door sticks if you jiggle the handle left. I'm telling you that because I want you gone, not because I like you."`);
+  G.flags.officeAccessGranted = true;
+  logEvt('flag', 'officeAccessGranted', true);
+  gatherEvidence('bartender');
+  closeDialogue();
+}
+
+function confrontBartenderAtHome() {
+  if (G.flags.evidence_bartender) {
+    print(`He opens the door, sees it's you, and just sighs. "We already did this."`);
+    return;
+  }
+  print(`The door opens on a chain. The bartender — out of uniform, in a t-shirt, looking ten years more tired without the club lighting — stares at you for a long second.`);
+  print(`"...you followed me home." Not a question.`);
+  G.flags.bartenderConfronted = true;
+  logEvt('flag', 'bartenderConfronted', true);
+  openBartenderLeverageMenu();
+}
+
+function openBartenderLeverageMenu(failedOnce) {
+  const opts = [];
+  const hasWeapon = bartenderHasWeaponLeverage();
+  const hasFacts  = G.flags.evidence_financial && G.flags.evidence_witness && !G.flags.bartenderQAFailed;
+  const hasWarrant = G.flags.knowsRodriguezWarrant;
+
+  if (hasWeapon) {
+    opts.push({ label: `Use "advanced interrogation tactics"`, action: () => {
+      const pw = getPlayerWeapon();
+      const shownWeapon = (pw === 'pocket knife' || pw === 'baseball bat') ? pw : 'pocket knife';
+      print(`You show him the ${displayWeaponName(shownWeapon)} — not a threat exactly, just a fact you're putting on the table.`);
+      print(`He folds almost immediately. Whatever dignity he had left, it wasn't worth this.`);
+      adjustKarma(-12);
+      logEvt('karma', G.karma);
+      bartenderSuccess();
+    }});
+  }
+  if (hasFacts) {
+    opts.push({ label: "Lay out what you already know", action: () => runBartenderQA() });
+  }
+  if (hasWarrant) {
+    opts.push({ label: "Threaten him with his own paperwork", action: () => {
+      print(`You read off the sheet. Priors, fines, and — "domestic disturbance, open warrant" — you let that one land.`);
+      print(`"That's not even mine," he says, but his voice cracks on it. "That's — I never —"`);
+      print(`"Doesn't matter what's true. Matters what's open." You let him sit with that.`);
+      print(`He caves. Not gracefully.`);
+      bartenderSuccess();
+    }});
+  }
+
+  if (!opts.length) {
+    print(`${failedOnce ? "He's found his nerve back." : "He's not budging."} "Get a warrant," he says, and doesn't open the door any further.`);
+    closeDialogue();
+    return;
+  }
+
+  openDialogue('nightclub_bartender', `He hasn't shut the door yet. That's something.`, opts);
+}
+
+// Two-round Q&A — only reachable with both the financial records and the
+// witness account in hand. Wrong answer at either round fails the whole
+// approach (permanently, for this playthrough) and falls back to whatever
+// other leverage is still available.
+function runBartenderQA() {
+  print(`"I know you pour drinks," you say. "I also know Club Fenix's books don't add up for a place this busy."`);
+  openDialogue('nightclub_bartender', `He's listening, tense.`, [
+    { label: `"The filings are sparse. Way too sparse for the traffic this place gets."`, action: () => {
+      print(`He flinches. That landed.`);
+      bartenderQARound2();
+    }},
+    { label: `"Come on, you can tell me. We're friends, right?"`, action: () => {
+      print(`He almost laughs. "We are not friends."`);
+      bartenderQAFail();
+    }},
+    { label: `"I could make life difficult for this club."`, action: () => {
+      print(`"That's not — that's not about me," he says, and the door edges shut a little. Wrong move.`);
+      bartenderQAFail();
+    }},
+  ]);
+}
+
+function bartenderQARound2() {
+  openDialogue('nightclub_bartender', `He's rattled now. One more push.`, [
+    { label: `"And the customers, the timing — none of it's subtle once you know what you're watching for."`, action: () => {
+      print(`He goes quiet for a second too long. "...okay," he finally says. "Okay."`);
+      bartenderSuccess();
+    }},
+    { label: `"I'll get the club shut down. Tonight, if I have to."`, action: () => {
+      print(`"That's not gonna make me talk faster," he says, some of his nerve creeping back.`);
+      bartenderQAFail();
+    }},
+    { label: `"You should really think about a different job."`, action: () => {
+      print(`He blinks at you. "...what?" The moment's gone.`);
+      bartenderQAFail();
+    }},
+  ]);
+}
+
+function bartenderQAFail() {
+  print(`Whatever ground you had, you just lost it. He's got his composure back.`);
+  G.flags.bartenderQAFailed = true;
+  logEvt('flag', 'bartenderQAFailed', true);
+  closeDialogue();
+  openBartenderLeverageMenu(true);
+}
+
+// Financial records — courthouse clerk. Official, sanitized filings — no motel
+// connection here, that's what makes the ledger (sneak) necessary later.
+const CLERK_FEE = 100;
 function gatherFinancialRecords() {
   if (!G.flags.bustInvestigationStarted) { print(`No reason to be looking at anyone's paperwork.`); return; }
   if (G.flags.evidence_financial) { print(`You already have what's in those filings.`); return; }
   if (G.location !== 'courthouse') { print(`Nothing here for that.`); return; }
-  const cash = playerCashTotal();
-  if (cash < 20) {
-    print(`The clerk would probably help for the right amount. You don't have the right amount. ($20)`);
-    return;
-  }
-  print(`The clerk barely looks up. "Business filings are public record," he says, "for a processing fee."`);
-  print(`You pay the fee. The fee is clearly not a real fee.`);
-  spendCash(20);
-  print(`The filings for Club Fenix are sparse, but sparse can tell you a lot on its own.`);
-  gatherEvidence('financial');
+
+  const intro = G.flags.clerkAskedOnce
+    ? `You ask about the Club Fenix filings again.`
+    : (() => { G.flags.clerkAskedOnce = true;
+        return `You flash the badge and ask to see Club Fenix's business filings.`; })();
+  print(intro);
+  print(`The clerk's expression flickers. "That's..." He lowers his voice. "Look, officially it's public record. Unofficially, people who ask about that club's paperwork have a way of finding out I helped them."`);
+  print(`He doesn't say no. He also doesn't reach for the file.`);
+  openDialogue('courthouse_clerk', `He's waiting to see how hard you push.`, [
+    { label: `Insist — you need to see it`, action: () => {
+      print(`He glances at the door, then back at you. "...maybe I can slip you the file. For a processing fee." He names a number: $${CLERK_FEE}.`);
+      openDialogue('courthouse_clerk', `He's still holding the folder.`, [
+        { label: `Pay the fee ($${CLERK_FEE})`, action: () => {
+          const cash = playerCashTotal();
+          if (cash < CLERK_FEE) { print(`You don't have $${CLERK_FEE} on you.`); closeDialogue(); return; }
+          spendCash(CLERK_FEE);
+          print(`He slides the folder across without looking at you. "We never had this conversation."`);
+          print(`The filings for Club Fenix are sparse, sanitized, official — but sparse can tell you a lot on its own.`);
+          gatherEvidence('financial');
+          closeDialogue();
+        }},
+        { label: `Pull your weapon — tell him you're more worried about what happens if he DOESN'T`, action: () => {
+          print(`You let him see the ${displayWeaponName(getPlayerWeapon())}. "I'd be more worried about what happens to you if you DON'T give me that file."`);
+          print(`He goes pale and hands it over immediately, hands shaking. No fee gets mentioned again.`);
+          print(`You're a cop. He's not going to report this, and you both know it.`);
+          print(`The filings for Club Fenix are sparse, sanitized, official — but sparse can tell you a lot on its own.`);
+          adjustKarma(-4);
+          logEvt('karma', G.karma);
+          gatherEvidence('financial');
+          closeDialogue();
+        }},
+      ]);
+    }},
+    { label: `Back off for now`, action: () => { print(`"Smart," he says, relieved.`); closeDialogue(); } },
+  ]);
 }
 
 // Witness account — a bar patron, requires a small favor first
 function gatherWitnessAccount() {
   if (!G.flags.bustInvestigationStarted) { print(`Nobody owes you that kind of conversation right now.`); return; }
   if (G.flags.evidence_witness) { print(`You already got what he had to say.`); return; }
+  if (G.flags.witnessKilled) { print(`He's not talking. He's not doing anything, actually.`); return; }
   if (G.location !== 'bar') { print(`Not the right place for this.`); return; }
-  if (!G.flags.didBarFavor) {
-    print(`There's a guy at the bar who's seen something — you can tell by the way he won't quite look at the door.`);
-    print(`He's not talking for free, though. He wants a drink bought, at minimum.`);
-    print(`[ "buy him a drink" to continue ]`, 'system');
-    return;
-  }
+
+  print(`You approach and ask if he's got a minute to talk about a police investigation.`);
+  print(`"Buyyy aaahh ggurrll a drunkk fisrst," he says. "*hiccup*"`);
+  openDialogue('bar_patron_witness', `He's swaying a little, waiting on you to decide something.`, [
+    { label: "Buy him a drink", action: () => {
+      const cash = playerCashTotal();
+      if (cash < 3) { print(`You can't even afford to buy him a drink.`); closeDialogue(); return; }
+      spendCash(3);
+      print(`You buy him a drink. He nods once, like that settles something.`);
+      closeDialogue();
+      revealWitnessTestimony();
+    }},
+    { label: `"Now is not the time for games."`, action: () => {
+      print(`Something in his face goes loose and mean.`);
+      print(`"Ppuhd uhp yer dukes bus-buster," he says. "*hiccup*"`);
+      print(`He swings before you can say anything else.`);
+      closeDialogue();
+      G.flags.witnessCombatActive = true;
+      logEvt('flag', 'witnessCombatActive', true);
+      startCombat('the guy at the bar', 'fists', false, true);
+    }},
+  ]);
+}
+
+function revealWitnessTestimony() {
   print(`With the drink in front of him, he finally talks. Quietly. Quickly. Like he wants it over with.`);
-  print(`It's exactly the kind of thing you needed to hear.`);
+  print(`"Whole thing's run by a — " he stops, reconsiders the word. "By La Señora. Owns the club, or however that actually works on paper. Everybody just calls her that."`);
+  print(`He talks a while about the day-to-day — who comes through, when, what they're buying, how casual it all looks from the outside. It's exactly the kind of thing you needed to hear.`);
+  G.flags.knowsLaSenora = true;
+  logEvt('flag', 'knowsLaSenora', true);
   gatherEvidence('witness');
 }
 
-function buyBarFavor() {
-  if (G.location !== 'bar' || !G.flags.bustInvestigationStarted || G.flags.evidence_witness) return false;
-  const cash = playerCashTotal();
-  if (cash < 3) { print(`You can't even afford to buy him a drink.`); return true; }
-  spendCash(3);
-  G.flags.didBarFavor = true;
-  print(`You buy him a drink. He nods once, like that settles something.`);
-  gatherWitnessAccount();
-  return true;
+function checkWitnessCombatOutcome() {
+  if (!G.flags.witnessCombatActive) return;
+  if (combatState) return;
+  G.flags.witnessCombatActive = false;
+  logEvt('flag', 'witnessCombatActive', false);
+  if (G.gameOver) return;
+
+  if (G.flags['killed_the_guy_at_the_bar']) {
+    print(`He's on the ground. Not getting up.`);
+    print(`Whatever he knew about the club, he just took it with him. There's no getting that back.`);
+    G.flags.witnessKilled = true;
+    logEvt('flag', 'witnessKilled', true);
+  } else {
+    print(`He's on the ground, out cold. Not the interview you wanted, but you got something out of it — a fight, apparently.`);
+  }
 }
 
-// Physical evidence — sneaking into the back office, riskiest option
+// Physical evidence — sneaking into the back office. Requires the bartender
+// having actually given you a way in; no amount of stealth substitutes for that.
 function gatherPhysicalEvidence() {
   if (!G.flags.bustInvestigationStarted) { print(`Nothing to sneak into here.`); return; }
   if (G.flags.evidence_physical) { print(`You already got what you came for back there.`); return; }
   if (G.location !== 'nightclub') { print(`Nowhere to sneak into from here.`); return; }
-
-  const caught = Math.random() < 0.35;
-  if (caught) {
-    print(`You try to slip toward the back office. Dennis is there before you've gone three steps.`);
-    print(`"Wrong door," he says. Not unkindly. You leave before it becomes a problem.`);
-    G.policeHeat = Math.min(90, G.policeHeat + 10);
-    logEvt('heat', G.policeHeat);
+  if (!G.flags.officeAccessGranted) {
+    print(`There's a locked door and Dennis within eyeshot of it most of the night. Without a way past both, this isn't happening.`);
     return;
   }
 
-  print(`You slip into the back office during a quiet moment. Ledgers, a laptop left unlocked, a drawer that shouldn't be unlocked either.`);
-  print(`You take photos with your phone. It's the strongest thing you've found.`);
+  print(`You jiggle the handle left, like you were told. It gives.`);
+  print(`Dennis is elsewhere — for once, actually elsewhere.`);
+  print(`Inside: a laptop, a filing cabinet, and — tucked under a floor panel — an actual bookkeeping ledger. Handwritten. The real numbers.`);
+  print(`Most of it is exactly what you'd expect. One line isn't: a recurring payment, monthly, to the Desert Rose Inn. Not a guest bill. A standing arrangement.`);
+  print(`You take photos of everything with your phone.`);
+  G.flags.knowsMotel = true;
+  logEvt('flag', 'knowsMotel', true);
   gatherEvidence('physical');
+}
+
+// ── EVIDENCE PROCESSING GATE ─────────────────────────────────
+// Whenever the player brings Hed evidence he hasn't seen yet, he needs a day
+// to go over it before he'll give another hint or sign off on the bust. This
+// only fires on new evidence since the last time he looked — gathering
+// several pieces in the field before ever talking to him costs nothing extra.
+function bustGateActive() {
+  return G.flags.bustProcessingUntil && G.gameMinutes < G.flags.bustProcessingUntil;
+}
+function bustEvidenceUnprocessed() {
+  return (G.flags.bustEvidence||0) > (G.flags.bustLastReportedCount||0);
+}
+// Returns true if this interaction should stop here (gate just triggered, or
+// already active). Returns false if the caller should proceed normally.
+function checkAndTriggerBustGate() {
+  if (bustGateActive()) {
+    const hoursLeft = Math.max(1, Math.ceil((G.flags.bustProcessingUntil - G.gameMinutes) / 60));
+    print(`"Still going over what you brought me," Hed says. "Give it a little more time." (~${hoursLeft} hr${hoursLeft===1?'':'s'} left)`);
+    return true;
+  }
+  if (bustEvidenceUnprocessed()) {
+    G.flags.bustLastReportedCount = G.flags.bustEvidence || 0;
+    G.flags.bustProcessingUntil = G.gameMinutes + 24 * 60;
+    logEvt('flag', 'bustLastReportedCount', G.flags.bustLastReportedCount);
+    logEvt('flag', 'bustProcessingUntil', G.flags.bustProcessingUntil);
+    print(`Hed flips through what you've brought him, actually reading it this time.`);
+    print(`"Give me a day to go over this properly," he says. "I'll have Rodriguez run down anything that needs legwork while I do. Come back tomorrow."`);
+    return true;
+  }
+  return false;
 }
 
 function reportBustProgress() {
   const n = G.flags.bustEvidence || 0;
   print(`"What've you got," Hed asks.`);
   print(`${n} piece${n===1?'':'s'} of evidence so far.`, 'system');
+  if (G.flags.witnessKilled && !G.flags.witnessKilledReported) {
+    G.flags.witnessKilledReported = true;
+    logEvt('flag', 'witnessKilledReported', true);
+    print(`Hed's face changes when you get to that part. "You did what to him?"`);
+    print(`He doesn't yell. Somehow that's worse. "That's a body I gotta explain and a source you don't got anymore. Both."`);
+    print(`He rubs his eyes. "Just — keep going. Try not to do that again."`);
+    printBlank();
+  }
   if (n === 0) {
     print(`"Nothing yet," you say. "Working on it."`);
     print(`"Take your time," Hed says. "Or don't. Your call."`);
-  } else if (n < BUST_EVIDENCE_MAX) {
+    return;
+  }
+  if (checkAndTriggerBustGate()) return;
+  if (n < BUST_EVIDENCE_MAX) {
     print(`Hed nods slowly. "Keep going if you can. More you got, easier this goes."`);
+  }
+  // Atmospheric hint toward whatever's the next logical gap — never names the
+  // exact source, just points at the shape of what's missing.
+  if (!G.flags.evidence_witness) {
+    if (G.flags.witnessKilled) {
+      print(`"Whoever else was in that bar might've seen something too," Hed says, a little pointed. "Not that you'd know."`);
+    } else {
+      print(`"People talk more than they think they do," Hed adds, almost to himself. "Especially with a drink in front of them."`);
+    }
+  } else if (!G.flags.evidence_surveillance) {
+    print(`"You'd be surprised what a place tells you just by watching it a while," Hed says. "Patterns don't lie."`);
+  } else if (!G.flags.evidence_financial) {
+    print(`"Money's gotta go somewhere," Hed says. "Somebody in this town keeps paper on everything. Officially, anyway."`);
+  } else if (!G.flags.evidence_bartender) {
+    print(`"Somebody that close to it oughta know more than he's saying," Hed says. "I'd focus on that bartender there. He's green, he'll spill. But you gotta get him somewhere where he can't just walk away from you."`);
+    if (!G.flags.hedRecommendedPressure) {
+      print(`"Might be worth seeing if Rodriguez turned up anything on him, too. Doubt it, but check."`);
+    }
+    G.flags.hedRecommendedPressure = true;
+    logEvt('flag', 'hedRecommendedPressure', true);
+  } else if (!G.flags.evidence_physical) {
+    print(`Hed frowns at what you've laid out. "This is all too clean. Too official. Somebody's keeping the real books somewhere else — and it ain't in a filing cabinet downtown."`);
   }
 }
 
 function beginBustFinal() {
-  if (!G.flags.bustReady && (G.flags.bustEvidence||0) === 0) {
+  const n = G.flags.bustEvidence || 0;
+  if (n === 0) {
     print(`"You haven't got anything yet," Hed says. "Go get something first."`); return;
   }
-
-  const n = G.flags.bustEvidence || 0;
-  print(`"Alright," Hed says. "Let's do this." He doesn't move from his desk. "You're doing this, I mean. I'll be here."`);
-  printBlank();
+  if (checkAndTriggerBustGate()) return;
 
   if (n <= 2) {
-    runBustOutcome1();
-  } else if (n <= 4) {
-    runBustOutcome2();
-  } else {
-    runBustOutcome3();
+    print(`Hed sets down the sandwich. "That's it? That's not enough to move on anybody, let alone her people."`);
+    print(`"You really want to do this now?"`);
+    openDialogue('sheriff_dodd', `He's waiting on you.`, [
+      { label: "Insist — you're doing this now", action: () => { closeDialogue(); launchBustOutcome(n); } },
+      { label: "He's right — hold off", action: () => { print(`"Good," Hed says, relieved. "Get more first."`); closeDialogue(); } },
+    ]);
+    return;
   }
+
+  closeDialogue();
+  if (n <= 4) {
+    print(`"Alright," Hed says. "Not bad. Not great either, but alright." He doesn't move from his desk. "You're doing this, I mean. I'll be here."`);
+  } else {
+    print(`"Alright," Hed says, almost impressed. "Let's do this." He doesn't move from his desk. "You're doing this, I mean. I'll be here."`);
+  }
+  printBlank();
+  launchBustOutcome(n);
+}
+
+function launchBustOutcome(n) {
+  if (n <= 2) runBustOutcome1();
+  else if (n <= 4) runBustOutcome2();
+  else runBustOutcome3();
 }
 
 // Outcome 1 (1-2 evidence): going in blind, full shootout, La Señora escapes
@@ -11603,17 +12230,33 @@ async function runBustOutcome1() {
   await sleep(800);
   print(`The nightclub is loud, dark, and immediately wrong the moment you're noticed.`, 'narration');
   await sleep(800);
-  print(`Dennis sees you first. Then the other one. Neither of them looks confused about what's happening.`, 'narration');
+  print(`Dennis sees you first. Then several other people who are all suddenly very interested in you.`, 'narration');
   await sleep(700);
   print(`Across the room, La Señora's expression does something complicated — recognition, then irritation, then the specific calm of someone already calculating an exit.`, 'narration');
   await sleep(800);
   print(`"Well," La Señora says, to no one in particular. "This is undignified." Then he's gone through a door that wasn't visible a second ago.`, 'special');
   await sleep(600);
   printBlank();
-  print(`The enforcers are not gone.`, 'failure');
+  print(`The enforcers are not gone. All of them.`, 'failure');
   await sleep(500);
+  print(`The door behind you bangs open. Deputy Rodriguez — awake, sunglasses on despite the dark, moving like a man who has done this before and enjoyed it.`, 'narration');
+  await sleep(700);
+  print(`"Hed sent me," he says, drawing something considerably bigger than department issue. "Wasn't about to let you do this alone."`, 'special');
+  await sleep(600);
+  printBlank();
   G.flags.bustOutcomeResolved = 'shootout';
-  startCombat('Dennis', 'fists', false, false);
+  startMultiCombat(
+    [
+      { name: 'a guy with a gun', weapon: 'blok19' },
+      { name: 'another guy with a gun', weapon: 'blok19' },
+      { name: 'a bat-wielding enforcer', weapon: 'baseball bat' },
+      { name: 'another bat-wielding enforcer', weapon: 'baseball bat' },
+      { name: 'Dennis', weapon: 'pocket knife' },
+    ],
+    [{ name: 'Deputy Rodriguez', weapon: 'rodriguez44',
+       equippedArmor: { head: 'aviator sunglasses', body: null, legs: 'lucky sneakers' } }],
+    false, false
+  );
 }
 
 // Outcome 2 (3-4 evidence): better intel, fewer guards, La Señora caught and gives up
@@ -11623,10 +12266,19 @@ async function runBustOutcome2() {
   await sleep(900);
   print(`You move during that window.`, 'narration');
   await sleep(700);
-  print(`Dennis is the only enforcer you actually see. The big one isn't around tonight, by design or by luck.`, 'narration');
+  print(`No Rodriguez this time — he's back at the station, asleep in a chair, exactly where you left him. This one's just you.`, 'narration');
+  await sleep(700);
+  print(`Dennis and one other guy. Both armed. Neither expecting you quite this fast.`, 'narration');
   await sleep(800);
   G.flags.bustOutcomeResolved = 'confrontation';
-  startCombat('Dennis', 'fists', false, true);
+  startMultiCombat(
+    [
+      { name: 'Dennis', weapon: 'blok19' },
+      { name: 'the other guard', weapon: 'blok19' },
+    ],
+    [],
+    false, true
+  );
 }
 
 // Outcome 3 (5 evidence): perfect intel, La Señora caught alone at the motel
@@ -11712,6 +12364,8 @@ function checkBustCombatOutcome() {
 }
 
 function offerEvidenceLocker() {
+  G.flags.evidenceLockerOffered = true;
+  logEvt('flag', 'evidenceLockerOffered', true);
   print(`Hed takes you to the back personally. A door, a key, a room that smells like old paper and dust.`);
   print(`"Don't touch anything. Except whatever you came for. I don't want to know."`);
   print(`He leaves you alone in there.`);
@@ -12138,6 +12792,10 @@ function printBodiesInRoom() {
 }
 
 function cmdSearchBody(obj) {
+  if (G.flags.policeProcedureRoom === G.location) {
+    print(`As much as you might want to, there's police procedure to worry about. Not now.`);
+    return;
+  }
   const bodies = getBodiesInRoom();
   if (!bodies.length) { print(`There's no body here to search.`); return; }
 
@@ -12542,7 +13200,16 @@ async function replayCommands(lines) {
   updateStatus();
 }
 
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+let sessionGen = 0; // bumped on every fullReset(); lets in-flight narrative sequences self-abort
+function sleep(ms) {
+  const myGen = sessionGen;
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (sessionGen !== myGen) { reject(new Error('SESSION_RESET')); return; }
+      resolve();
+    }, ms);
+  });
+}
 
 // ═══════════════════════════════════════════════
 //  SCREENS
@@ -12917,6 +13584,15 @@ const EXIT_CATEGORY = {
   apartment: 'hub', hallway: 'hub',
   downtown: 'hub', district: 'hub', sticks: 'hub',
   bus_stop_downtown: 'hub', bus_stop_district: 'hub', bus_stop_sticks: 'hub',
+  // Dev-only extras (not normal room exits, but devgo can reach them)
+  evidence_locker: 'quest', jail_cells: 'quest', body_location: 'quest',
+  motel_room: 'quest', motel_room6: 'quest',
+  doris_door: 'shop', door_4c: 'shop', door_4d: 'shop', door_4e: 'shop',
+  door_4f: 'shop', door_4g: 'shop', door_4h: 'shop', door_4i: 'shop',
+  trap_house_outside: 'shop', trap_house: 'shop', bar_bathroom: 'shop',
+  speakeasy_door: 'shop', speakeasy: 'shop', clinic_pharmacy: 'shop',
+  fenix_alley: 'shop', park_lake: 'shop', petting_zoo: 'shop',
+  creek: 'shop', woods_lake: 'shop', cemetery: 'shop', na_meeting: 'shop',
 };
 const EXIT_CATEGORY_ORDER = { quest: 0, shop: 1, hub: 2 };
 
@@ -12933,15 +13609,76 @@ const EXIT_SHORT_NAME = {
   apartment: 'APARTMENT', hallway: 'HALLWAY', downtown: 'DOWNTOWN', district: 'DISTRICT',
   sticks: 'THE STICKS', bus_stop_downtown: 'BUS STOP', bus_stop_district: 'BUS STOP',
   bus_stop_sticks: 'BUS STOP',
+  // Dev-only extras
+  evidence_locker: 'EVIDENCE LOCKER', jail_cells: 'THE CELLS', body_location: 'CLEARING',
+  motel_room: 'MOTEL ROOM', motel_room6: 'ROOM 6',
+  doris_door: "DORIS'S DOOR", door_4c: 'APT 4C', door_4d: 'APT 4D', door_4e: 'APT 4E',
+  door_4f: 'APT 4F', door_4g: 'APT 4G', door_4h: 'APT 4H', door_4i: 'APT 4I',
+  trap_house_outside: 'HENDRIX STREET', trap_house: 'TRAP HOUSE', bar_bathroom: 'BAR BATHROOM',
+  speakeasy_door: 'SIDE DOOR', speakeasy: 'THE ESTABLISHMENT', clinic_pharmacy: 'CLINIC PHARMACY',
+  fenix_alley: 'BACK ALLEY', park_lake: 'PARK LAKE', petting_zoo: 'PETTING ZOO',
+  creek: 'THE CREEK', woods_lake: 'WOODS LAKE', cemetery: 'CEMETERY', na_meeting: 'NA MEETING',
 };
 
-let roomMenuMode = 'root'; // 'root' | 'go' | 'talk' — drives the staged non-combat hotbar
+// Dev hotbar: rooms grouped by zone for devgo's staged menu. Any room key not
+// listed here falls into "Other" automatically (mirrors DEV_GIVE_CATEGORIES'
+// Misc bucket) so new rooms never silently break the menu.
+const DEV_GO_ZONES = {
+  'Apartment Building': ['apartment','hallway','doris_door','door_4c','door_4d','door_4e','door_4f','door_4g','door_4h','door_4i'],
+  'Downtown': ['downtown','diner','alley','gas_station','pawn_shop','pharmacy','laundromat',
+    'motel','motel_room','motel_room6','bar','bar_bathroom','speakeasy_door','speakeasy',
+    'trap_house_outside','trap_house','bus_stop_downtown'],
+  'District': ['district','police_station','evidence_locker','jail_cells','courthouse','clinic',
+    'clinic_pharmacy','church','na_meeting','cemetery','post_office_exterior','schoolhouse',
+    'park','park_lake','petting_zoo','nightclub','fenix_alley','bus_stop_district','homeless_camp'],
+  'Sticks': ['sticks','woods','body_location','auto_shop','trailer_park','moonshiner_camp',
+    'sneeds','cult_camp','reservoir','creek','woods_lake','bus_stop_sticks'],
+};
+
+// Dev hotbar: devgive items grouped by category. Misc is computed dynamically
+// from whatever's left in the item pools — anything added later that isn't
+// explicitly categorized just shows up there instead of vanishing.
+const DEV_GIVE_CATEGORIES = {
+  'Weapons': ['fists','baseball bat','pocket knife','blok19'],
+  'Ammo': ['small box of 9mm','large box of 9mm'],
+  'Mods': ['nails','laser sight','scope','switch','suppressor'],
+  'Food': ['granola bar','discarded sandwich','sandwich','soup','soup can','chips','jerky','candy bar'],
+  'Drink': ['coffee','bad coffee','water bottle','energy drink','beer','moonshine'],
+  'Fishing': ['fishing rod',"Jeremy's rod","Jeremy's rig",'worms','cricket bait','stink bait','cut bait',
+    'common fish','mutant catfish','strange eel','eyeless trout','purple sunfish','whispering gar'],
+  'Drugs & Medical': ['pain pills','weed','stimulants','fentanyl','bandages','antiseptic','first aid kit','otc painkillers'],
+  'Bags': ['backpack','duffel bag'],
+  'Quest Items': ['dr_whitfield_badge','lab coat','clipboard','forged credentials','tin foil badge',
+    'warrant','laptop','carburetor','drive chain','battery'],
+  'Dev': ['dev duffel','aviator sunglasses','lucky sneakers','rodriguez44'], // future NPC-exclusive items belong here too
+};
+
+// Given an exit's destination room key (and the raw exit key used internally,
+// which is often just a direction word like "north"/"down"/"out"), find
+// something that will actually resolve through DEST_MAP when typed/sent as
+// "go X". Exit keys aren't always typable commands themselves.
+function resolveGoCommandArg(destKey, exitKey) {
+  if (DEST_MAP[exitKey] === destKey) return exitKey;
+  if (DEST_MAP[destKey] === destKey) return destKey;
+  const alias = Object.keys(DEST_MAP).find(k => DEST_MAP[k] === destKey);
+  return alias || destKey;
+}
+
+let roomMenuMode = 'root'; // 'root' | 'go' | 'talk' | 'dev...' — drives the staged non-combat hotbar
 
 // Filters a room's static npc list down to who's actually here right now —
 // handles the few NPCs whose presence depends on time of day / story flags.
+// A room stays an active "crime scene" (NPCs fled) for exactly 1 in-game day
+// after a witnessed violent crime there, then people trickle back.
+function isCrimeScene(roomKey) {
+  const until = G.flags[`crimeScene_${roomKey}`];
+  return !!(until && G.gameMinutes < until);
+}
+
 function getPresentNpcs(roomKey) {
   const room = ROOMS[roomKey];
   if (!room || !room.npcs) return [];
+  if (isCrimeScene(roomKey)) return [];
   return room.npcs.filter(k => {
     if (isNpcDead(k)) return false;
     if (k === 'earl') return roomKey === getEarlLocation();
@@ -12951,8 +13688,111 @@ function getPresentNpcs(roomKey) {
       return (h >= 21 || h < 5) && !G.flags.mannyGone;
     }
     if (k === 'alley_dealer' && G.flags.alleyDealerGone) return false;
+    if (k === 'dale') return G.flags.daleJailed ? roomKey === 'jail_cells' : roomKey === 'bar';
     return true;
   });
+}
+
+function devSlug(name) { return name.toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function getMiscDevItems() {
+  const allItems = [...new Set([...Object.keys(ITEM_VALUES), ...Object.keys(WEAPONS), ...Object.keys(CONSUMABLES||{}), ...Object.keys(ARMOR)])];
+  const categorized = new Set(Object.values(DEV_GIVE_CATEGORIES).flat());
+  return allItems.filter(i => !categorized.has(i));
+}
+
+function getOtherDevRooms() {
+  const categorized = new Set(Object.values(DEV_GO_ZONES).flat());
+  return Object.keys(ROOMS).filter(k => !categorized.has(k));
+}
+
+// Dev hotbar renderer — root -> category -> leaf, same staged pattern as
+// combat/go/talk. Only ever called when G.flags.devMode is true.
+function renderDevButtons(container) {
+  container.innerHTML = '';
+  const mkBtn = (label, onclick) => {
+    const btn = document.createElement('button');
+    btn.className = 'qbtn';
+    btn.textContent = label;
+    btn.onclick = onclick;
+    container.appendChild(btn);
+  };
+  const backTo = (mode) => () => { roomMenuMode = mode; refreshContextButtons(); };
+  const leaf   = (cmd)  => () => { roomMenuMode = 'root'; quickCmd(cmd); };
+
+  if (roomMenuMode === 'dev') {
+    mkBtn('heal', leaf('devheal'));
+    mkBtn('buff needs', leaf('devbuff'));
+    mkBtn('give', backTo('dev_give'));
+    mkBtn('go', backTo('dev_go'));
+    mkBtn('skip time', backTo('dev_skip'));
+    mkBtn('testfight', backTo('dev_testfight'));
+    mkBtn('list commands', leaf('devlistcmd'));
+    mkBtn('list rooms', leaf('devlistloc'));
+    mkBtn('list npcs', leaf('devlistnpc'));
+    mkBtn('list items', leaf('devlistitem'));
+    mkBtn('dev help', leaf('devhelp'));
+    mkBtn('< back', backTo('root'));
+    return;
+  }
+
+  if (roomMenuMode === 'dev_give') {
+    Object.keys(DEV_GIVE_CATEGORIES).forEach(cat => mkBtn(cat, backTo('dev_give_item_' + devSlug(cat))));
+    mkBtn('Misc', backTo('dev_give_item_misc'));
+    mkBtn('< back', backTo('dev'));
+    return;
+  }
+
+  if (roomMenuMode.startsWith('dev_give_item_')) {
+    const slug = roomMenuMode.replace('dev_give_item_', '');
+    const catName = Object.keys(DEV_GIVE_CATEGORIES).find(c => devSlug(c) === slug);
+    const items = slug === 'misc' ? getMiscDevItems() : (DEV_GIVE_CATEGORIES[catName] || []);
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'qbtn-empty';
+      empty.textContent = 'Nothing in this category.';
+      container.appendChild(empty);
+    }
+    items.forEach(item => mkBtn(item, leaf(`devgive ${item}`)));
+    mkBtn('< back', backTo('dev_give'));
+    return;
+  }
+
+  if (roomMenuMode === 'dev_go') {
+    Object.keys(DEV_GO_ZONES).forEach(zone => mkBtn(zone, backTo('dev_go_room_' + devSlug(zone))));
+    mkBtn('Other', backTo('dev_go_room_other'));
+    mkBtn('< back', backTo('dev'));
+    return;
+  }
+
+  if (roomMenuMode.startsWith('dev_go_room_')) {
+    const slug = roomMenuMode.replace('dev_go_room_', '');
+    const zoneName = Object.keys(DEV_GO_ZONES).find(z => devSlug(z) === slug);
+    const roomKeys = (slug === 'other' ? getOtherDevRooms() : (DEV_GO_ZONES[zoneName] || []))
+      .slice()
+      .sort((a, b) => (EXIT_CATEGORY_ORDER[EXIT_CATEGORY[a]] ?? 1) - (EXIT_CATEGORY_ORDER[EXIT_CATEGORY[b]] ?? 1));
+    roomKeys.forEach(key => mkBtn(EXIT_SHORT_NAME[key] || ROOMS[key]?.name || key, leaf(`devgo ${key}`)));
+    mkBtn('< back', backTo('dev_go'));
+    return;
+  }
+
+  if (roomMenuMode === 'dev_skip') {
+    [['2 days','2d'],['1 day','1d'],['12 hrs','12h'],['6 hrs','6h'],['3 hrs','3h'],
+     ['2 hrs','2h'],['1 hr','1h'],['30 min','30m'],['15 min','15m']]
+      .forEach(([label, val]) => mkBtn(label, leaf(`devskip ${val}`)));
+    mkBtn('< back', backTo('dev'));
+    return;
+  }
+
+  if (roomMenuMode === 'dev_testfight') {
+    ['solo','duo','squad','ally','mixed'].forEach(mode => mkBtn(mode, leaf(`testfight ${mode}`)));
+    mkBtn('< back', backTo('dev'));
+    return;
+  }
+
+  // Fallback — shouldn't get here, but don't leave the bar broken
+  roomMenuMode = 'dev';
+  renderDevButtons(container);
 }
 
 function refreshContextButtons() {
@@ -12994,8 +13834,16 @@ function refreshContextButtons() {
   // ── Staged submenus: go (destinations) / talk (NPCs present) ──
   if (roomMenuMode === 'go') {
     const exits = (room && room.exits) || {};
+    // De-dupe by destination — a room can have multiple exit keys (e.g. "out"
+    // and "down") pointing at the same place, which should only show once.
+    const seenDest = new Set();
     const entries = Object.entries(exits)
-      .filter(([exitKey, destKey]) => !(destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation))
+      .filter(([exitKey, destKey]) => {
+        if (destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation) return false;
+        if (seenDest.has(destKey)) return false;
+        seenDest.add(destKey);
+        return true;
+      })
       .sort((a, b) => {
         const catA = EXIT_CATEGORY_ORDER[EXIT_CATEGORY[a[1]]] ?? 1;
         const catB = EXIT_CATEGORY_ORDER[EXIT_CATEGORY[b[1]]] ?? 1;
@@ -13004,10 +13852,11 @@ function refreshContextButtons() {
     for (const [exitKey, destKey] of entries) {
       const destRoom = ROOMS[destKey];
       const label = EXIT_SHORT_NAME[destKey] || (destRoom ? destRoom.name : exitKey);
+      const cmdArg = resolveGoCommandArg(destKey, exitKey);
       const btn = document.createElement('button');
       btn.className = 'qbtn';
       btn.textContent = label;
-      btn.onclick = () => { roomMenuMode = 'root'; quickCmd(`go ${exitKey}`); };
+      btn.onclick = () => { roomMenuMode = 'root'; quickCmd(`go ${cmdArg}`); };
       container.appendChild(btn);
     }
     const back = document.createElement('button');
@@ -13042,6 +13891,12 @@ function refreshContextButtons() {
     return;
   }
 
+  // ── Dev hotbar (devMode only): root -> category -> leaf ──
+  if (G.flags.devMode && roomMenuMode.startsWith('dev')) {
+    renderDevButtons(container);
+    return;
+  }
+
   const buttons = []; // {label, cmd}
 
   // Go / talk — expand into staged submenus rather than one button per option
@@ -13050,6 +13905,12 @@ function refreshContextButtons() {
   }
   if (getPresentNpcs(G.location).length) {
     buttons.push({ label: 'talk', action: () => { roomMenuMode = 'talk'; refreshContextButtons(); } });
+  }
+  if ((G.location === 'nightclub' || G.location === 'district') && G.flags.bustInvestigationStarted && !G.flags.evidence_surveillance) {
+    buttons.push({ label: 'surveil', cmd: 'surveil' });
+  }
+  if (G.flags.devMode) {
+    buttons.push({ label: 'dev', action: () => { roomMenuMode = 'dev'; refreshContextButtons(); } });
   }
 
   const SEVERE = 65; // medium-high threshold, matches existing need warning tier
@@ -13111,6 +13972,24 @@ function refreshContextButtons() {
   // Ticket — an unticketed car in this room during the tickets mission
   if (typeof hasTicketableCar === 'function' && hasTicketableCar(G.location)) {
     buttons.push({ label: 'ticket', cmd: 'ticket' });
+  }
+
+  // Sneak into the back office — bust investigation, at the club, access already granted
+  if (G.location === 'nightclub' && G.flags.bustInvestigationStarted &&
+      G.flags.officeAccessGranted && !G.flags.evidence_physical) {
+    buttons.push({ label: 'sneak', cmd: 'sneak' });
+  }
+
+  // Fentanyl — the near-universal endgame trigger (every ending but the church
+  // route runs through this). Gated purely on possessing it, not on how you
+  // got it or where you are, since it isn't exclusively tied to the police route.
+  if (G.inventory.includes('fentanyl')) {
+    buttons.push({ label: 'use fentanyl', cmd: 'use fentanyl' });
+  }
+
+  // Confront the bartender at home — only once you know who he is AND where he lives
+  if (G.location === 'door_4f' && G.flags.knowsBartenderHome && G.flags.knowsLaSenora && !G.flags.evidence_bartender) {
+    buttons.push({ label: 'knock', cmd: 'knock' });
   }
 
   // Ride bus — at a bus stop, one button per other zone
