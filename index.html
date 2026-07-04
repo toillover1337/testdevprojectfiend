@@ -533,6 +533,9 @@ const G = {
   painkillersActive: 0,    // game minutes when painkillers wear off
   gunMag:        0,        // rounds currently in magazine (0-7)
   gunChambered:  false,    // one extra round in the chamber
+  gunAmmoType:   'normal', // 'normal' | 'ap' — whichever is currently loaded in the blok19
+  shotgunShells: 0,        // shells currently loaded in the shotgun (0-5)
+  shotgunAmmoType: 'buck', // 'buck' | 'slug' — whichever is currently loaded
   equippedWeapon: null,    // null = fists/auto, otherwise an explicit weapon key from WEAPONS
   equippedArmor: { head: null, body: null, legs: null, bag: null },
   weaponAttachments: {},   // { "handgun++": ['laser sight','scope'] } - tracks which specific items are attached to a modified weapon
@@ -1057,7 +1060,7 @@ ${trashBinDesc('pawn_shop')}`,
 a mini-fridge, and what appears to be a single filing cabinet with a bobblehead on top.
 Sheriff Hed is at his desk eating a sandwich. Deputy Rodriguez is asleep in his chair.
 A door at the back leads to the jail cells. A second door, this one with an actual lock on it,
-is marked EVIDENCE.${G.flags.bustInvestigationStarted ? ' Hed gave you the key.' : ''}
+is marked EVIDENCE.${G.flags.evidenceLockerOffered ? ' Hed gave you the key.' : ''}
 ${G.flags.inJail ? 'You are currently a guest of the state.' : ''}`,
     exits: { southwest: 'district', back: 'jail_cells', evidence: 'evidence_locker' },
     items: [], npcs: ['sheriff_dodd', 'deputy_hicks'],
@@ -1084,7 +1087,7 @@ ${G.flags.evidenceLockerRifled
   ? `Some of the bags look less orderly than they did.`
   : `Everything appears to be where it should be.`}`,
     exits: { out: 'police_station' }, items: [], npcs: [],
-    locked: () => !G.flags.bustInvestigationStarted,
+    locked: () => !G.flags.evidenceLockerOffered,
     onLocked: () => {
       if (G.isReplaying) return;
       print(`You try the handle. Locked.`);
@@ -1140,6 +1143,7 @@ ${G.flags.chuySentFentanyl ? `"You want the real stuff, that ain't me. Talk to L
   bar: {
     name: "ROSARIO'S BAR",
     firstVisit: true, safeSleep: false, safeBathroom: true,
+    onFirstVisit: () => { G.flags.everVisitedBar = true; logEvt('flag', 'everVisitedBar', true); },
     desc: () => `A bar the color of a regrettable decision. Neon signs for beers nobody ordered.
 Sticky floors. A jukebox playing something sad. Slot machines line the far wall.
 A blackjack machine hums in the corner.
@@ -1147,7 +1151,11 @@ Behind the bar: Rosario, who has seen it all and will not be discussing it.
 ${G.flags.knowsPassword ? `There is a door to the side with a sliding peephole. You know the password.` 
   : `There is a door to the side with a sliding peephole. It is closed.`}
 ${G.flags.policeMissionActive === 'arrest' && !G.flags.arrestTargetFound
-  ? `The bar's about half full. A nervous-looking guy at the far end is nursing something brown and watching the door more than his drink.`
+  ? (G.flags.warrantRead
+      ? (G.flags.metBarBeforeWarrant
+          ? `Hey — isn't that the sad old guy with the bum leg over at Rosario's, at the far end of the bar?`
+          : `The bar's about half full. A nervous-looking guy at the far end catches your eye — he looks a lot like the picture on the warrant.`)
+      : `The bar's about half full. A nervous-looking guy at the far end is nursing something brown and watching the door more than his drink.`)
   : `A few patrons nurse their drinks. A sad-looking guy hunches over the bar by himself, staring at nothing in particular.`}
 ${isEarlAtBar() ? (G.flags.metEarl ? `Earl's a few stools down, working on a beer.` : `A redneck-looking guy is parked a few stools down, working on a beer like it owes him money.`) : ''} The bathroom is in back.
 ${G.flags.bustInvestigationStarted && !G.flags.evidence_witness && !G.flags.bustReady ? `A guy near the end of the bar won't quite look at the door. He's seen something. He might talk for the price of a drink.` : ''}
@@ -1501,7 +1509,8 @@ ${G.flags.communeFlag ? 'Somewhere in the future there will be a stone here with
     desc: () => `The post office. It is closed. The hours posted on the door indicate it
 should be open right now. It is not open. It has not been open in recent memory.
 Mail still arrives in Los Ciegos. Nobody investigates this too hard.
-${G.flags.anonNetUnlocked ? 'Packages from AnonNet appear at your apartment on their own schedule.' : ''}`,
+${G.flags.anonNetUnlocked ? 'Packages from AnonNet appear at your apartment on their own schedule.' : ''}
+${G.flags.debtPaymentPlan && G.flags.clinicDebt > 0 ? 'There\'s still an outgoing mail slot around the side. "mail payment" would get an envelope out, if you had one and the cash.' : ''}`,
     exits: {}, items: [], npcs: [],
   },
 
@@ -1739,6 +1748,10 @@ const NPCS = {
 //  ITEM DESCRIPTIONS
 // ═══════════════════════════════════════════════
 const ITEM_DESC = {
+  'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
+  'envelope':           'A plain envelope. Good for mailing small amounts of cash to people you owe.',
+  'kevlar vest':        'A real kevlar vest, secondhand but functional. Not going to stop everything, but it helps.',
+  'kevlar helmet':      "A kevlar helmet. Won't stop much force, but it's amazing what a little deflection does to a bullet's day.",
   'carburetor':         'A rebuilt carburetor, still in the box. Hector needs this for the bike.',
   'drive chain':        'A motorbike drive chain, coiled and lightly oiled. Hector needs this for the bike.',
   'battery':            'A motorbike battery. Heavier than it looks. Hector needs this for the bike.',
@@ -1787,6 +1800,11 @@ const ITEM_DESC = {
   'otc painkillers':    'Over the counter. Not the real stuff.',
   'small box of 9mm':   'A small 50 round box of 9mm ammo. No brand printed on it. You get what you get.',
   'large box of 9mm':   'A large 100 round box of 9mm ammo. No brand printed on it. You get what you get.',
+  'box of buckshot':    'A box of 10 shotgun shells, loaded with buckshot — nine pellets each, wide spread, forgiving aim.',
+  'box of slugs':       'A box of 5 shotgun slugs — one heavy solid projectile per shell. Devastating if it lands. Harder to place.',
+  'semi-auto shotgun':  'A pump-action semi-auto shotgun. Takes buckshot or slugs — not both at once.',
+  'sawed-off shotgun':  'A double-barrel shotgun, sawed down. Holds two shells, buckshot or slugs. Wide spread, wild aim.',
+  'box of ap rounds':   'A box of 20 armor-piercing 9mm rounds. Punches through most of what regular ammo can\'t.',
   'worms':              'A small container of nightcrawlers. Classic bait. Works for most freshwater fish.',
   'cricket bait':       'Live crickets in a perforated cup. Good for sunfish and trout.',
   'stink bait':         'A jar of something that smells like death and ambition. Catfish love it.',
@@ -1870,6 +1888,10 @@ const ITEM_VALUES = {
   'jerky':              3,
   'flask':              8,
   'cheap watch':        12,
+  'phone':              0,   // story item, not sellable — you need this
+  'envelope':           1,
+  'kevlar vest':        65,
+  'kevlar helmet':      55,
   'old jacket':         10,
   'paperback':          2,
   'pocket knife':       15,
@@ -1884,6 +1906,11 @@ const ITEM_VALUES = {
   'otc painkillers':     12,
   'small box of 9mm':   27,
   'large box of 9mm':   50,
+  'box of buckshot':    35,
+  'box of slugs':       40,
+  'box of ap rounds':   65,
+  'semi-auto shotgun': 165,
+  'sawed-off shotgun': 100,
   'worms':               3,
   'cricket bait':        4,
   'stink bait':          5,
@@ -1936,8 +1963,10 @@ const ITEM_SIZE = {
   'worms': 'small', 'cricket bait': 'small', 'stink bait': 'small', 'cut bait': 'small',
   'pain pills': 'small', 'otc painkillers': 'small', 'antiseptic': 'small',
   'small box of 9mm': 'small', 'scratch ticket': 'small', 'paperback': 'small',
+  'box of buckshot': 'small', 'box of slugs': 'small', 'box of ap rounds': 'small',
   'weed': 'small', 'stimulants': 'small', 'fentanyl': 'small',
   'pocket knife': 'small', 'flask': 'small', 'cheap watch': 'small',
+  'phone': 'small', 'envelope': 'small',
   'moonshine': 'small', 'nails': 'small',
   'laser sight': 'small', 'scope': 'small', 'switch': 'small', 'suppressor': 'small',
   'energy drink': 'small', 'water bottle': 'small', 'coffee': 'small',
@@ -1947,10 +1976,10 @@ const ITEM_SIZE = {
   'glass shard': 'small', 'bent spoon': 'small', 'old receipt': 'small',
 
   // large — bulky, hard to conceal, draws attention
-  'baseball bat': 'large', 'blok19': 'large', 'first aid kit': 'large',
+  'baseball bat': 'large', 'blok19': 'large', 'semi-auto shotgun': 'large', 'sawed-off shotgun': 'medium', 'first aid kit': 'large',
   'guitar': 'large', "Jeremy's rig": 'large', "Jeremy's rod": 'large',
   'fishing rod': 'large', 'large box of 9mm': 'large', 'laptop': 'large',
-  'old jacket': 'large', 'lab coat': 'large', 'backpack': 'large',
+  'old jacket': 'large', 'lab coat': 'large', 'backpack': 'large', 'kevlar vest': 'large', 'kevlar helmet': 'medium',
   'duffel bag': 'large', 'carburetor': 'large', 'drive chain': 'large',
   'battery': 'large',
 
@@ -1975,6 +2004,8 @@ const CAP_COST = {
 
 // Named overrides for items whose bulk doesn't match their theft-size tier
 const CAP_COST_OVERRIDE = {
+  'phone':            0.05,  // barely weighs anything
+  'envelope':         0.05,
   'carburetor':       5.0,   // huge, unwieldy engine part
   'drive chain':      3.0,   // coiled but heavy and awkward
   'battery':          4.0,   // dense, dead weight
@@ -2080,6 +2111,9 @@ const MAX_CHARGES = {
   'otc painkillers':   4,
   'small box of 9mm':   50,
   'large box of 9mm':  100,
+  'box of buckshot':    10,
+  'box of slugs':        5,
+  'box of ap rounds':   20,
 };
 
 function isMultiUse(item) {
@@ -2179,6 +2213,7 @@ const NPC_SHOPS = {
       { item: 'chips',         price: 2,  randomChance: 0.6 },
       { item: 'jerky',         price: 3,  randomChance: 0.5 },
       { item: 'condom',         price: 2,  randomChance: 0.4 },
+      { item: 'envelope',       price: 1 },
       { item: 'battery',        price: 28 },
     ],
     buys: false,
@@ -2269,8 +2304,11 @@ const NPC_SHOPS = {
       { item: 'pocket knife',      price: 15 },
       { item: 'baseball bat',      price: 20, randomChance: 0.6 },
       { item: 'blok19',           price: 80 },
+      { item: 'sawed-off shotgun', price: 100, randomChance: 0.25 },
       { item: 'small box of 9mm',  price: 27 },
       { item: 'large box of 9mm',  price: 50, randomChance: 0.5 },
+      { item: 'box of buckshot',   price: 38, randomChance: 0.4 },
+      { item: 'box of slugs',      price: 42, randomChance: 0.3 },
       { item: 'laptop',            price: 45 },
       { item: 'guitar',            price: 35, randomChance: 0.3 },
       { item: 'walkman',           price: 8,  randomChance: 0.5 },
@@ -2278,6 +2316,8 @@ const NPC_SHOPS = {
       { item: 'flask',             price: 8,  randomChance: 0.6 },
       { item: 'condom',            price: 2,  randomChance: 0.5 },
       { item: 'duffel bag',        price: 20, randomChance: 0.4 },
+      { item: 'kevlar vest',       price: 65, randomChance: 0.35 },
+      { item: 'kevlar helmet',     price: 55, randomChance: 0.35 },
     ],
     buys: true,
     greet: () => `Rick doesn't look up from the paper. "Help yourself to a look. Cash only."`,
@@ -2377,10 +2417,16 @@ const NPC_SHOPS = {
       // Ammo
       { item: 'small box of 9mm',  price: 30  },
       { item: 'large box of 9mm',  price: 55  },
+      { item: 'box of buckshot',   price: 35  },
+      { item: 'box of slugs',      price: 40  },
+      { item: 'box of ap rounds',  price: 65,  randomChance: 0.6  },
       // Occasional hardware
       { item: 'blok19',           price: 110, randomChance: 0.35 },
+      { item: 'semi-auto shotgun', price: 165, randomChance: 0.30 },
       { item: 'baseball bat',      price: 22,  randomChance: 0.5  },
       { item: 'pocket knife',      price: 18,  randomChance: 0.6  },
+      { item: 'kevlar vest',       price: 65,  randomChance: 0.75 },
+      { item: 'kevlar helmet',     price: 55,  randomChance: 0.75 },
     ],
     buys: true,
     pawnDiscount: 0.55,   // pays slightly less than Rick, but buys guns
@@ -3290,6 +3336,9 @@ function printRoom(key, force=false) {
   checkArrestOutcome();
   checkBustCombatOutcome();
   checkEarlBustOutcome();
+  checkDebtCollectionCall();
+  checkDebtLateness();
+  checkHitmanRecurrence();
 
   if (force || room.firstVisit) {
     // (kept for compatibility — firstVisit still gates one-time triggers below)
@@ -4346,6 +4395,9 @@ function applyEvt(data) {
       if (flagKey === 'painkillersActive') { G.painkillersActive = parseFloat(flagVal); break; }
       if (flagKey === 'gunMag')          { G.gunMag = parseInt(flagVal); break; }
       if (flagKey === 'gunChambered')    { G.gunChambered = flagVal === 'true'; break; }
+      if (flagKey === 'gunAmmoType')     { G.gunAmmoType = flagVal; break; }
+      if (flagKey === 'shotgunShells')   { G.shotgunShells = parseInt(flagVal); break; }
+      if (flagKey === 'shotgunAmmoType') { G.shotgunAmmoType = flagVal; break; }
       if (flagKey === 'playerName')      { G.playerName = flagVal; break; }
       // trashSearched stored as "flag trashSearched_downtown 1440"
       if (flagKey.startsWith('trashSearched_')) {
@@ -4818,7 +4870,7 @@ function fullReset() {
   G.karma=0; G.flags={}; G.eventLog=[];
   G.turnCount=0; G.isReplaying=false; G.gameOver=false;
   G.gameMinutes=0; G.needs={hunger:20,thirst:20,bladder:10,fatigue:15,craving:30};
-  G.activeEffects={}; G.copWarnings=0; G.shopStock=null; barterSession=null; bjState=null; dialogueSession=null; combatState=null; G.playerHp=100; G.bleed=0; G.brokenArm=null; G.brokenLeg=null; G.painkillersActive=0; G.displayTime=0; G.startDate=null; G.gunMag=0; G.gunChambered=false; G.equippedWeapon=null; G.equippedArmor={head:null,body:null,legs:null,bag:null};
+  G.activeEffects={}; G.copWarnings=0; G.shopStock=null; barterSession=null; bjState=null; dialogueSession=null; combatState=null; G.playerHp=100; G.bleed=0; G.brokenArm=null; G.brokenLeg=null; G.painkillersActive=0; G.displayTime=0; G.startDate=null; G.gunMag=0; G.gunChambered=false; G.gunAmmoType='normal'; G.shotgunShells=0; G.shotgunAmmoType='buck'; G.equippedWeapon=null; G.equippedArmor={head:null,body:null,legs:null,bag:null};
   G.stash=[]; G.bikeStorage=[]; G.trashSearched={};  // apartment stash / bike saddlebag / trash cooldowns
   G.floorItems={}; G.trashTossedItems={}; G.trashTossedAt={};
   G.aliases={}; G.savedCmds={}; lastRealCommand='';
@@ -4972,7 +5024,7 @@ function handleCommand(raw) {
     case 'bus':       return cmdTakeBus(obj);
     case 'fish':      return cmdFish();
     case 'watch':     return cmdCheckWatch();
-    case 'reload':    return cmdReload();
+    case 'reload':    return cmdReload(obj);
     case 'equip':      return cmdEquip(obj);
     case 'combine':    return cmdCombine(obj);
     case 'removeatt':  return cmdRemoveAttachment(obj);
@@ -5013,6 +5065,11 @@ function interceptSpecial(raw) {
   // Police route — taking the fentanyl from the evidence locker
   if (r.includes('take fentanyl') && G.location === 'police_station') {
     if (takeEvidenceFentanyl()) return true;
+  }
+
+  // Debt collection — mailing a $10 payment from the post office
+  if (r.includes('mail payment') && G.location === 'post_office_exterior') {
+    mailDebtPayment(); return true;
   }
 
   // Knock — route based on location
@@ -5303,14 +5360,24 @@ function cmdLookAtOwnedItem(item) {
     return;
   }
 
+  // Phone — also shows the time, plus whatever debt situation you're in
+  if (item === 'phone') {
+    print(`You check your phone. It is ${formatTime(G.displayTime)}.`);
+    if (G.startDate) print(`${formatDate()}.`, 'system');
+    if (G.flags.clinicDebt > 0) {
+      print(`${G.flags.clinicDebt} missed messages, give or take. All about the same thing.`, 'system');
+    }
+    return;
+  }
+
   // Warrant — reading it for the first time updates dialogue with Dale
   if (item === 'warrant') {
     print(ITEM_DESC['warrant']);
     if (!G.flags.warrantRead) {
       G.flags.warrantRead = true;
       logEvt('flag', 'warrantRead', true);
-      printBlank();
-      print(`Bad knee. Usually at the bar. You know where to look.`, 'system');
+      G.flags.metBarBeforeWarrant = !!G.flags.everVisitedBar;
+      logEvt('flag', 'metBarBeforeWarrant', G.flags.metBarBeforeWarrant);
     }
     return;
   }
@@ -6078,8 +6145,8 @@ const USE_ON_HANDLERS = [
       print(ITEM_DESC['warrant']);
       if (!G.flags.warrantRead) {
         G.flags.warrantRead = true; logEvt('flag', 'warrantRead', true);
-        printBlank();
-        print(`Bad knee. Usually at the bar. You know where to look.`, 'system');
+        G.flags.metBarBeforeWarrant = !!G.flags.everVisitedBar;
+        logEvt('flag', 'metBarBeforeWarrant', G.flags.metBarBeforeWarrant);
       }
       return true;
     }
@@ -7070,16 +7137,16 @@ function talkEarl() {
       : `Earl is outside his trailer looking at something in the middle distance. "Hey," he says.`;
   openDialogue('earl', greeting, [
     { label: "Ask what he does", action: () => {
-      if (!G.flags.earlIntro) {
+      if (G.flags.metEarl) {
         G.flags.earlIntro = true;
         print(`"Little of this, little of that," Earl says. "Mostly this." He nods toward the back of his trailer.`);
         print(`The smell from back there is very specific.`);
       } else {
-        print(`Earl taps his nose. "Same as always."`);
+        print(`"Little of this, little of that," Earl says. "Odd jobs, mostly." He doesn't elaborate, and his eyes don't leave you until you drop it.`);
       }
     }},
     { label: "Ask about his operation", action: () => {
-      if (G.flags.earlIntro) {
+      if (G.flags.metEarl) {
         print(`Earl looks around with the casualness of someone who has decided paranoia is too much work.`);
         print(`"Best shine in Ciegos County," he says. "Don't tell nobody." He doesn't seem worried about it.`);
       } else {
@@ -7125,6 +7192,22 @@ function talkCuz() {
         print(`"Cuz," he says again, happy to repeat it. "Well — it's not really my name. It's just what everybody calls me."`);
         G.flags.askedCuzNameOnce = true;
         logEvt('flag', 'askedCuzNameOnce', true);
+        // Swap this option for the follow-up right away, in this same conversation
+        if (dialogueSession) {
+          const idx = dialogueSession.options.findIndex(o => o.label === "Ask his name");
+          if (idx !== -1) {
+            dialogueSession.options[idx] = {
+              label: "Ask his real name", action: () => {
+                print(`Cuz blinks. Then grins — really grins, like it's been a while since anyone bothered.`);
+                print(`"...Donny," he says. "It's Donny." He says it again, quieter, testing how it sounds out loud. "Nobody really asks that."`);
+                G.flags.knowsCuzRealName = true;
+                logEvt('flag', 'knowsCuzRealName', true);
+                adjustKarma(3);
+                logEvt('karma', G.karma);
+              }
+            };
+          }
+        }
       }
     }});
   } else if (!G.flags.knowsCuzRealName) {
@@ -8230,6 +8313,12 @@ const ARMOR = {
   // script his combat profile via the same equipment system the player uses
   'aviator sunglasses': { slot: 'head', hitBonus: 1.0, label: 'aviator sunglasses', npcOnly: true },
   'lucky sneakers':     { slot: 'legs', dodgeBonus: 1.0, label: 'lucky sneakers', npcOnly: true },
+  // NPC-only (the debt collector) — same mechanism, opposite side of the table
+  'kevlar vest':        { slot: 'body', damageReduction: 0.30, lethalityMult: 0.87, label: 'kevlar vest' }, // real, purchasable — solid damage reduction, modest lethality cut
+  'kevlar helmet':      { slot: 'head', damageReduction: 0.12, lethalityMult: 0.35, label: 'kevlar helmet' }, // inverse profile — light damage reduction, big lethality cut
+  // NPC-only (the debt collector) — total negation on body only, head is exposed
+  'hitmans vest':       { slot: 'body', damageReduction: 1.0, label: "hitman's vest", npcOnly: true },
+  'dress shoes':        { slot: 'legs', dodgeBonus: 0.80, label: 'dress shoes', npcOnly: true },
   // Bags — separate 'bag' slot, does NOT conflict with body armor
   'backpack':    { slot: 'bag', label: 'backpack' },
   'duffel bag':  { slot: 'bag', label: 'duffel bag' },
@@ -8345,16 +8434,51 @@ function displayWeaponName(name) {
 
 // Weapon definitions — stats hidden from player, hinted in item descriptions
 const WEAPONS = {
-  fists:         { accuracy: 0.85, damage: [8,15],  lethalChance: 0.02, bleedChance: 0.03, bleedSev: 1, label: 'fists',         ranged: false },
-  'baseball bat':{ accuracy: 0.80, damage: [20,35], lethalChance: 0.07, bleedChance: 0.06, bleedSev: 1, label: 'baseball bat',  ranged: false },
-  'pocket knife':{ accuracy: 0.75, damage: [25,45], lethalChance: 0.45, bleedChance: 0.70, bleedSev: 3, label: 'pocket knife',  ranged: false },
-  blok19:        { accuracy: 0.70, damage: [45,75], lethalChance: 0.65, bleedChance: 0.35, bleedSev: 2, label: 'Blok-19',     ranged: true  },
+  fists:         { accuracy: 0.85, damage: [8,15],  lethalByZone: {head:0.08, body:0.02, limb:0.01}, bleedChance: 0.03, bleedSev: 1, label: 'fists',         ranged: false },
+  'baseball bat':{ accuracy: 0.80, damage: [20,35], lethalByZone: {head:0.20, body:0.08, limb:0.03}, bleedChance: 0.06, bleedSev: 1, label: 'baseball bat',  ranged: false },
+  'pocket knife':{ accuracy: 0.75, damage: [25,45], lethalByZone: {head:0.55, body:0.40, limb:0.08}, bleedChance: 0.70, bleedSev: 3, label: 'pocket knife',  ranged: false },
+  blok19:        { accuracy: 0.70, damage: [45,75], lethalByZone: {head:0.85, body:0.38, limb:0.08}, bleedChance: 0.35, bleedSev: 2, label: 'Blok-19',     ranged: true  },
   // NPC-only — Deputy Rodriguez's sidearm, revealed in the shootout ending.
   // Deliberately far above player-tier weapons; paired with his hitBonus/dodgeBonus
   // gear (aviator sunglasses / lucky sneakers) he's a completely different fighter
   // than the sleeping deputy the rest of the game shows you.
-  rodriguez44:   { accuracy: 0.90, damage: [90,140], lethalChance: 0.6, bleedChance: 0.4, bleedSev: 3, label: "Rodriguez's .44", ranged: true },
+  rodriguez44:   { accuracy: 0.90, damage: [90,140], lethalByZone: {head:0.95, body:0.45, limb:0.12}, bleedChance: 0.4, bleedSev: 3, label: "Rodriguez's .44", ranged: true },
+  // NPC-only — the debt collector's sidearm. Obscene damage on purpose; paired
+  // with his aviators/kevlar/dress-shoes gear he's meant to be functionally unbeatable.
+  waltherSuppressed: { accuracy: 0.93, damage: [110,170], lethalByZone: {head:0.97, body:0.55, limb:0.18}, bleedChance: 0.3, bleedSev: 2, label: 'suppressed Walther', ranged: true },
+  // Shotguns — two variants sharing the same ammo/damage/lethality profile,
+  // differing in capacity and accuracy. Buckshot mode is handled entirely
+  // outside the normal accuracy/damage pipeline (resolveBuckshotAttack).
+  'semi-auto shotgun': { accuracy: 0.68, damage: [70,110], lethalByZone: {head:0.99, body:0.55, limb:0.20},
+    bleedChance: 0.55, bleedSev: 3, label: 'semi-auto shotgun', ranged: true,
+    zoneAccuracyMult: { head: 0.35, left_arm: 0.45, right_arm: 0.45, left_leg: 0.45, right_leg: 0.45 } },
+  'sawed-off shotgun': { accuracy: 0.50, damage: [70,110], lethalByZone: {head:0.99, body:0.55, limb:0.20},
+    bleedChance: 0.55, bleedSev: 3, label: 'sawed-off shotgun', ranged: true,
+    zoneAccuracyMult: { head: 0.30, left_arm: 0.40, right_arm: 0.40, left_leg: 0.40, right_leg: 0.40 } },
 };
+
+// Helper — collapses a hit-zone string down to head/body/limb for lethality lookup
+function lethalChanceForZone(wDef, zone, defender) {
+  let base;
+  if (!wDef.lethalByZone) base = wDef.lethalChance || 0; // legacy fallback
+  else if (zone === 'head') base = wDef.lethalByZone.head;
+  else if (zone === 'body' || !zone) base = wDef.lethalByZone.body;
+  else base = wDef.lethalByZone.limb; // left_arm, right_arm, left_leg, right_leg
+
+  // Armor can cut lethality chance without necessarily blocking much damage
+  // (helmets especially — a grazed/deflected head shot still hurts, but is
+  // far less likely to be the one that kills you).
+  if (defender && defender.equippedArmor) {
+    const slot = zone === 'head' ? 'head' : (zone === 'body' || !zone) ? 'body' : null;
+    if (slot) {
+      const item = defender.equippedArmor[slot];
+      if (item && ARMOR[item] && ARMOR[item].lethalityMult) {
+        base *= ARMOR[item].lethalityMult;
+      }
+    }
+  }
+  return base;
+}
 
 // Bleed tick damage per severity per minute
 const BLEED_DAMAGE = { 1: 0.08, 2: 0.18, 3: 0.35 };
@@ -8654,6 +8778,10 @@ function printCombatOptions() {
     const total = G.gunMag + (G.gunChambered ? 1 : 0);
     print(`${total} round${total===1?'':'s'} left in the mag.`, 'system');
   }
+  if (isShotgun(pw)) {
+    const ammoLabel = G.shotgunAmmoType === 'slug' ? 'slug' : 'buckshot shell';
+    print(`${G.shotgunShells} ${ammoLabel}${G.shotgunShells===1?'':'s'} left in the tube.`, 'system');
+  }
   if (armedLimb) print(`Your weapon arm is broken. Attacks are weaker.`, 'system');
 
   refreshContextButtons();
@@ -8677,7 +8805,8 @@ function handleCombatInput(raw) {
 
   // Reload
   if (r.includes('reload') || r === 'rack slide') {
-    cmdReload(); return true;
+    const reloadArg = r.replace(/^reload\s*/, '').trim();
+    cmdReload(reloadArg); return true;
   }
 
   // Equip / switch weapon
@@ -8739,6 +8868,69 @@ function handleCombatInput(raw) {
 }
 
 // ── COMBAT ROUND (player's turn → ally turns → enemy turns) ────
+// Buckshot — one shell, 9 independent pellets. Each pellet rolls its own
+// hit/miss, then (if it hits) which body region it landed on. No explicit
+// target zone from the player — the spread decides for you. Damage is split
+// evenly across however many pellets actually connect.
+const BUCKSHOT_ZONE_WEIGHTS = [
+  ['body', 0.55], ['left_arm', 0.08], ['right_arm', 0.08],
+  ['left_leg', 0.08], ['right_leg', 0.08], ['head', 0.05],
+]; // sums to 0.92 — remaining 8% of connecting pellets covered by rounding/miss margin
+function resolveBuckshotAttack(e, pDef) {
+  const painActive = G.painkillersActive > G.gameMinutes;
+  const weaponArmBroken = (G.brokenArm === 'right' || G.brokenArm === 'both') && !painActive;
+  const pAccMult = weaponArmBroken ? 0.5 : 1.0;
+  const cravingPenalty = G.needs.craving >= 75 ? 0.80 : G.needs.craving >= 50 ? 0.90 : 1.0;
+  const needDeb = getNeedDebuffs();
+  const eDodge = getNpcDodgeBonus(e);
+  const pelletHitChance = Math.max(0, pDef.accuracy * pAccMult * cravingPenalty * needDeb.outAcc - eDodge);
+
+  const totalDmg = pDef.damage[0] + Math.random() * (pDef.damage[1] - pDef.damage[0]);
+  const perPellet = totalDmg / 9;
+  const zoneDmg = {};
+  let pelletsLanded = 0;
+
+  for (let i = 0; i < 9; i++) {
+    if (Math.random() >= pelletHitChance) continue; // this pellet missed entirely
+    const roll = Math.random();
+    let cum = 0, zone = 'body';
+    for (const [z, w] of BUCKSHOT_ZONE_WEIGHTS) {
+      cum += w;
+      if (roll <= cum) { zone = z; break; }
+    }
+    const armorMult = 1.0 - getNpcArmorReduction(e, zone);
+    const dmg = Math.floor(perPellet * armorMult * needDeb.outDmg);
+    zoneDmg[zone] = (zoneDmg[zone] || 0) + dmg;
+    pelletsLanded++;
+  }
+
+  if (pelletsLanded === 0) {
+    print(`The spread goes wide. All nine pellets miss.`, 'system');
+    return;
+  }
+
+  let totalLanded = 0, worstZone = null, worstDmg = -1;
+  for (const [zone, dmg] of Object.entries(zoneDmg)) {
+    e.hp = Math.max(0, e.hp - dmg);
+    totalLanded += dmg;
+    if (dmg > worstDmg) { worstDmg = dmg; worstZone = zone; }
+  }
+  e.lastHitZone = worstZone; // heaviest-hit region — used for the lethality roll
+
+  if (e.hp > 0 && Math.random() < (pDef.bleedChance || 0)) {
+    e.bleedSev = Math.max(e.bleedSev || 0, pDef.bleedSev || 1);
+  }
+
+  const areasHit = Object.keys(zoneDmg).length;
+  const zoneFlavor = { head: 'the head', body: 'the chest', left_arm: 'the left arm',
+    right_arm: 'the right arm', left_leg: 'the left leg', right_leg: 'the right leg' };
+  if (zoneDmg.head) {
+    print(`Buckshot connects — ${pelletsLanded} of 9 pellets land, and at least one catches ${e.name} across ${zoneFlavor.head}. Bad spread to be on the wrong end of.`, e.hp<=0 ? 'failure' : 'system');
+  } else {
+    print(`Buckshot connects — ${pelletsLanded} of 9 pellets land across ${areasHit} area${areasHit===1?'':'s'}, mostly ${zoneFlavor[worstZone]}. ${totalLanded} damage.`, e.hp<=0 ? 'failure' : 'system');
+  }
+}
+
 function combatRound(playerTarget) {
   if (!combatState) return;
   combatState.rounds++;
@@ -8773,6 +8965,33 @@ function combatRound(playerTarget) {
     logEvt('flag','gunMag', G.gunMag);
     logEvt('flag','gunChambered', G.gunChambered);
   }
+  if (isShotgun(pw)) {
+    if (G.shotgunShells <= 0) {
+      print(`You pull the trigger. Click. Empty.`, 'failure');
+      print(`Nothing left in the tube.`, 'failure');
+      combatAllEnemyTurns();
+      return;
+    }
+    G.shotgunShells--;
+    logEvt('flag', 'shotgunShells', G.shotgunShells);
+
+    // Buckshot is a fundamentally different attack shape — 9 independent
+    // pellets, each rolling its own hit/zone/damage — so it gets its own
+    // resolution path entirely, bypassing the normal single-zone shot loop.
+    if (G.shotgunAmmoType === 'buck') {
+      resolveBuckshotAttack(e, pDef);
+      if (!combatState) return;
+      if (e.hp <= 0) {
+        combatEnemyWentDown(e);
+        if (!combatState) return;
+        combatState.playerTarget = 0;
+      }
+      combatAllAllyTurns();
+      if (!combatState) return;
+      combatAllEnemyTurns();
+      return;
+    }
+  }
 
   // ── PLAYER ATTACKS ──
   const painActive = G.painkillersActive > G.gameMinutes;
@@ -8784,7 +9003,8 @@ function combatRound(playerTarget) {
                        : 1.0;
   const eDodge = getNpcDodgeBonus(e);
   const needDeb = getNeedDebuffs();
-  const pAcc = Math.max(0, pDef.accuracy * tMod.accuracyMult * pAccMult * cravingPenalty * needDeb.outAcc - eDodge);
+  const zoneAccMult = (pDef.zoneAccuracyMult && pDef.zoneAccuracyMult[playerTarget]) || 1.0;
+  const pAcc = Math.max(0, pDef.accuracy * tMod.accuracyMult * zoneAccMult * pAccMult * cravingPenalty * needDeb.outAcc - eDodge);
 
   const shotCount = pDef.multiShot || 1;
   const isBurst = shotCount > 1;
@@ -8804,17 +9024,47 @@ function combatRound(playerTarget) {
 
     if (pHits) {
       const dmg = Math.floor(pDef.damage[0] + Math.random() * (pDef.damage[1] - pDef.damage[0]));
-      const armorMult = 1.0 - getNpcArmorReduction(e, playerTarget);
+      let armorRed = getNpcArmorReduction(e, playerTarget);
+      if (baseWeaponName(pw) === 'blok19' && G.gunAmmoType === 'ap') {
+        armorRed *= (1 - AP_ARMOR_IGNORE); // AP rounds punch through most of what armor would normally stop
+      }
+      const armorMult = 1.0 - armorRed;
       const scaledDmg = Math.floor(dmg * tMod.damageMult * pDmgMult * armorMult * needDeb.outDmg);
       e.hp = Math.max(0, e.hp - scaledDmg);
       e.lastHitZone = playerTarget;
 
       const isArmTarget = playerTarget === 'left_arm' || playerTarget === 'right_arm';
-      if (isArmTarget && e.armed && Math.random() < tMod.disarmChance) {
-        e.armed = false;
-        e.weapon = 'fists';
-        print(buildAttackProse(pw, playerTarget, true, 'disarm', e.name));
-      } else {
+      const isLegTarget = playerTarget === 'left_leg' || playerTarget === 'right_leg';
+      let brokeSomething = false;
+
+      if ((isArmTarget || isLegTarget) && e.hp > 0) {
+        const breakBase = tMod.breakChance || 0;
+        const breakMult = (BREAK_MULTS[baseWeaponName(pw)] || 1.0);
+        if (isArmTarget && !e.brokenArm && Math.random() < breakBase * breakMult) {
+          e.brokenArm = true;
+          brokeSomething = true;
+          if (e.armed) {
+            e.armed = false;
+            e.weapon = 'fists';
+            print(buildAttackProse(pw, playerTarget, true, 'disarm', e.name));
+          } else {
+            print(`${e.name}'s arm gives out under the hit.`, 'failure');
+          }
+        } else if (isLegTarget && !e.brokenLeg && Math.random() < breakBase * breakMult) {
+          e.brokenLeg = true;
+          brokeSomething = true;
+          print(`${e.name}'s leg gives out. They're not steady anymore.`, 'failure');
+        }
+      }
+
+      // Bleed — same combat-session-only rule as breaks. Enemy never carries
+      // this outside the fight; there's nothing to clear because combatState
+      // itself just goes away when the fight ends.
+      if (e.hp > 0 && Math.random() < (pDef.bleedChance || 0)) {
+        e.bleedSev = Math.max(e.bleedSev || 0, pDef.bleedSev || 1);
+      }
+
+      if (!brokeSomething) {
         print(buildAttackProse(pw, playerTarget, true, e.hp <= 0 ? 'killing' : 'hitting', e.name));
       }
     } else {
@@ -8834,17 +9084,42 @@ function combatRound(playerTarget) {
   combatAllAllyTurns();
   if (!combatState) return;
 
+  // ── BLEED TICK — combat-only, never persists outside the fight ──
+  applyEnemyBleedTicks();
+  if (!combatState) return;
+
   // ── ENEMY TURNS ──
   combatAllEnemyTurns();
 }
 
+// Bleeding enemies lose HP each round. Purely a combat-session effect —
+// tracked on the enemy object itself (part of combatState), so it's
+// automatically gone the moment the fight ends. Bleeding out is always
+// lethal — no lethality roll, no "knocked out" outcome, if this is what
+// actually finishes them off.
+const ENEMY_BLEED_TICK = { 1: 5, 2: 10, 3: 18 };
+function applyEnemyBleedTicks() {
+  if (!combatState) return;
+  for (const e of [...combatState.enemies]) {
+    if (!e.bleedSev || e.hp <= 0) continue;
+    const dmg = ENEMY_BLEED_TICK[e.bleedSev] || 0;
+    e.hp = Math.max(0, e.hp - dmg);
+    if (e.hp <= 0) {
+      combatEnemyWentDown(e, true); // forceLethal — bleeding out always kills
+      if (!combatState) return;
+    } else {
+      print(`${e.name} is bleeding badly.`, 'system');
+    }
+  }
+}
+
 // One enemy was knocked to 0 HP — handle death/KO and check for fight end
-function combatEnemyWentDown(e) {
+function combatEnemyWentDown(e, forceLethal) {
   printBlank();
   const wDef = weaponDef(getPlayerWeapon());
-  const lethal = Math.random() < wDef.lethalChance;
+  const lethal = forceLethal || Math.random() < lethalChanceForZone(wDef, e.lastHitZone, e);
   if (lethal) {
-    print(`${e.name} goes down. Dead.`, 'failure');
+    print(forceLethal ? `${e.name} goes down. Bled out.` : `${e.name} goes down. Dead.`, 'failure');
     G.flags[`killed_${e.name.replace(/\s+/g,'_')}`] = true;
     spawnBody(Object.keys(NPCS).find(k=>NPCS[k].name===e.name)||'default', e.name, G.location);
     combatState.karmaChange += combatState.playerInitiated ? -25 : -5;
@@ -8912,7 +9187,7 @@ function combatAllyTurn(ally) {
     print(allyHitLines[Math.floor(Math.random()*allyHitLines.length)]);
 
     if (target.hp <= 0) {
-      const lethal = Math.random() < aDef.lethalChance;
+      const lethal = Math.random() < lethalChanceForZone(aDef, 'body', target);
       if (lethal) {
         print(`${target.name} goes down. Doesn't look like they're getting back up.`, 'failure');
         G.flags[`killed_${target.name.replace(/\s+/g,'_')}`] = true;
@@ -8943,6 +9218,12 @@ function combatAllEnemyTurns() {
 
 function combatEnemyTurn(e) {
   if (!combatState) return;
+
+  // Broken leg — 30% chance of losing the turn outright, checked fresh each time
+  if (e.brokenLeg && Math.random() < 0.30) {
+    print(`${e.name}'s leg buckles. They lose their footing and their turn.`, 'system');
+    return;
+  }
 
   // Ammo check
   if (e.weapon === 'blok19') {
@@ -9012,6 +9293,8 @@ function combatEnemyTurn(e) {
       print(buildAttackProse(e.weapon, eTarg, true, combatState.playerHp <= 0 ? 'killing' : 'hitting', 'you', e.name));
 
       if (combatState.playerHp <= 0) {
+        combatState.lastPlayerHitWeapon = e.weapon;
+        combatState.lastPlayerHitZone = eTarg;
         combatEnd('enemy_killed_player');
         return;
       }
@@ -9411,9 +9694,27 @@ function cmdRemoveAttachment(obj) {
 // Ammo boxes are multi-use containers, same system as worms — "small box of 9mm (3)"
 // means you own 3 boxes; each draw pulls one round from the active (oldest) box.
 const MAG_CAPACITY = 15;
+const SHOTGUN_NAMES = ['semi-auto shotgun', 'sawed-off shotgun'];
+function isShotgun(name) { return SHOTGUN_NAMES.includes(baseWeaponName(name)); }
+function getShotgunCapacity(name) { return baseWeaponName(name) === 'sawed-off shotgun' ? 2 : 5; }
+const AP_ARMOR_IGNORE = 0.55; // AP rounds ignore 55% of whatever armor damage reduction would otherwise apply
 
-function drawOneRound() {
-  // Try small box first, then large — draws one round (one charge) from whichever is active
+function drawOneRound(ammoType, boxPref) {
+  if (ammoType === 'ap') {
+    if (G.inventory.includes('box of ap rounds') && useMultiUseCharge('box of ap rounds')) return true;
+    return false;
+  }
+  if (boxPref === 'large') {
+    if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
+    if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
+    return false;
+  }
+  if (boxPref === 'small') {
+    if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
+    if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
+    return false;
+  }
+  // Default: small first then large
   if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
   if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
   return false;
@@ -9428,21 +9729,128 @@ function totalLooseRoundsOwned() {
   return total;
 }
 
-function cmdReload() {
-  if (!G.inventory.some(i => baseWeaponName(i) === 'blok19')) {
+function totalLooseAPRoundsOwned() {
+  let total = 0;
+  if (G.itemCharges && G.itemCharges['box of ap rounds']) total += G.itemCharges['box of ap rounds'].reduce((a,b)=>a+b,0);
+  return total;
+}
+
+function cmdReload(obj) {
+  const raw = (obj || '').toLowerCase();
+  const hasBlok = G.inventory.some(i => baseWeaponName(i) === 'blok19');
+  const hasShotgun = G.inventory.some(i => isShotgun(i));
+
+  if (!hasBlok && !hasShotgun) {
     print(`You don't have a gun to reload.`); return;
   }
 
-  const magFull = (G.gunMag >= MAG_CAPACITY && G.gunChambered);
-  if (magFull) {
-    print(`Already topped off. Full mag, one in the chamber.`); return;
+  const wantsShotgun = raw.includes('shotgun') || raw.includes('sawed') || raw.includes('buck') || raw.includes('slug') || raw.includes('shell');
+  const wantsBlok = raw.includes('blok') || raw.includes('handgun') || raw.includes('9mm') || raw.includes('pistol') || /\bap\b/.test(raw);
+
+  let target;
+  if (wantsShotgun && hasShotgun) target = 'shotgun';
+  else if (wantsBlok && hasBlok) target = 'blok19';
+  else if (isShotgun(getPlayerWeapon()) && hasShotgun) target = 'shotgun';
+  else if (hasBlok) target = 'blok19';
+  else target = 'shotgun';
+
+  if (target === 'shotgun') {
+    let ammoType = null;
+    if (raw.includes('slug')) ammoType = 'slug';
+    else if (raw.includes('buck') || raw.includes('shell')) ammoType = 'buck';
+    cmdReloadShotgun(ammoType);
+    return;
   }
+
+  let ammoType = null;
+  if (/\bap\b/.test(raw)) ammoType = 'ap';
+  let boxPref = null;
+  if (raw.includes('small')) boxPref = 'small';
+  else if (raw.includes('large')) boxPref = 'large';
+  cmdReloadBlok19(ammoType, boxPref);
+}
+
+function cmdReloadShotgun(ammoType) {
+  if (!ammoType) ammoType = G.shotgunAmmoType || 'buck';
+  const ammoLabel = ammoType === 'slug' ? 'slugs' : 'buckshot';
+  const ammoItem = ammoType === 'slug' ? 'box of slugs' : 'box of buckshot';
+  const capacity = getShotgunCapacity(getPlayerWeapon());
+
+  if (G.shotgunShells >= capacity && G.shotgunAmmoType === ammoType) {
+    print(`Already full of ${ammoLabel}.`); return;
+  }
+
+  // Switching ammo type mid-tube means dumping whatever's already loaded —
+  // you can't mix buckshot and slugs in the same tube.
+  if (G.shotgunShells > 0 && G.shotgunAmmoType !== ammoType) {
+    const oldLabel = G.shotgunAmmoType === 'slug' ? 'slugs' : 'buckshot';
+    print(`You rack out the ${oldLabel} still loaded to switch over to ${ammoLabel}.`);
+    G.shotgunShells = 0;
+  }
+
+  if (!isMultiUse(ammoItem) || !G.itemCharges || !G.itemCharges[ammoItem] || G.itemCharges[ammoItem].length === 0) {
+    if (G.shotgunShells === 0) {
+      print(`You don't have any ${ammoLabel} to load. You need a ${ammoItem}.`); return;
+    }
+  }
+
+  const needed = capacity - G.shotgunShells;
+  let drawn = 0;
+  for (let i = 0; i < needed; i++) {
+    if (!(G.inventory.includes(ammoItem) && useMultiUseCharge(ammoItem))) break;
+    drawn++;
+  }
+
+  if (drawn === 0 && G.shotgunShells === 0) {
+    print(`You don't have any ${ammoLabel} to load. You need a ${ammoItem}.`); return;
+  }
+
+  G.shotgunShells += drawn;
+  G.shotgunAmmoType = ammoType;
+  logEvt('flag', 'shotgunShells', G.shotgunShells);
+  logEvt('flag', 'shotgunAmmoType', G.shotgunAmmoType);
+
+  if (drawn < needed && drawn > 0) {
+    print(`You load in what you've got — ${G.shotgunShells} ${ammoLabel} in the tube now. That's all you have.`);
+  } else if (drawn > 0) {
+    print(`You load ${drawn} more. ${G.shotgunShells}/${capacity} ${ammoLabel} in the tube.`);
+  } else {
+    print(`${G.shotgunShells}/${capacity} ${ammoLabel} already in the tube.`);
+  }
+
+  if (combatState) {
+    print(`That used your turn.`,'system');
+    combatAllAllyTurns(); if (combatState) combatAllEnemyTurns();
+  }
+  updateStatus();
+}
+
+function cmdReloadBlok19(ammoType, boxPref) {
+  if (!G.inventory.some(i => baseWeaponName(i) === 'blok19')) {
+    print(`You don't have a gun to reload.`); return;
+  }
+  if (!ammoType) ammoType = G.gunAmmoType || 'normal';
+  const ammoLabel = ammoType === 'ap' ? 'AP rounds' : 'standard rounds';
+
+  const magFull = (G.gunMag >= MAG_CAPACITY && G.gunChambered && G.gunAmmoType === ammoType);
+  if (magFull) {
+    print(`Already topped off with ${ammoLabel}. Full mag, one in the chamber.`); return;
+  }
+
+  // Switching ammo type mid-mag means dumping whatever's already loaded first
+  if ((G.gunMag > 0 || G.gunChambered) && G.gunAmmoType && G.gunAmmoType !== ammoType) {
+    const oldLabel = G.gunAmmoType === 'ap' ? 'AP rounds' : 'standard rounds';
+    print(`You drop the mag — still loaded with ${oldLabel} — to switch over to ${ammoLabel}.`);
+    G.gunMag = 0;
+    G.gunChambered = false;
+  }
+  G.gunAmmoType = ammoType;
 
   const needed = MAG_CAPACITY - G.gunMag;
 
   // Mag is full but chamber isn't — rack the slide, costs one round if available
   if (needed <= 0) {
-    if (!G.gunChambered && drawOneRound()) {
+    if (!G.gunChambered && drawOneRound(ammoType, boxPref)) {
       G.gunChambered = true;
       print(`You rack the slide. One in the chamber now.`);
     } else if (!G.gunChambered) {
@@ -9450,31 +9858,34 @@ function cmdReload() {
     } else {
       print(`Already topped off.`);
     }
+    logEvt('flag','gunAmmoType', G.gunAmmoType);
     updateStatus(); return;
   }
 
-  if (totalLooseRoundsOwned() === 0) {
-    print(`You're out of ammo entirely. You need a box of 9mm.`); return;
+  const ownedCount = ammoType === 'ap' ? totalLooseAPRoundsOwned() : totalLooseRoundsOwned();
+  if (ownedCount === 0) {
+    print(`You're out of ${ammoType==='ap' ? 'AP rounds' : 'ammo'} entirely. You need ${ammoType==='ap' ? 'a box of AP rounds' : 'a box of 9mm'}.`); return;
   }
 
   let drawn = 0;
   for (let i = 0; i < needed; i++) {
-    if (!drawOneRound()) break;
+    if (!drawOneRound(ammoType, boxPref)) break;
     drawn++;
   }
   G.gunMag += drawn;
 
-  if (!G.gunChambered && drawOneRound()) {
+  if (!G.gunChambered && drawOneRound(ammoType, boxPref)) {
     G.gunChambered = true;
   }
 
   logEvt('flag','gunMag', G.gunMag);
   logEvt('flag','gunChambered', G.gunChambered);
+  logEvt('flag','gunAmmoType', G.gunAmmoType);
 
   if (drawn < needed) {
-    print(`You load in what you've got — ${G.gunMag} round${G.gunMag===1?'':'s'} in the mag now. That's all the ammo you have.`);
+    print(`You load in what you've got — ${G.gunMag} round${G.gunMag===1?'':'s'} in the mag now${ammoType==='ap'?' (AP)':''}. That's all you have.`);
   } else {
-    print(`You top off the mag. ${G.gunMag} rounds${G.gunChambered ? ', one chambered' : ''}.`);
+    print(`You top off the mag. ${G.gunMag} rounds${G.gunChambered ? ', one chambered' : ''}${ammoType==='ap'?' (AP)':''}.`);
   }
 
   if (combatState) {
@@ -9543,7 +9954,11 @@ function combatFlee() {
       const dmg  = Math.floor(eDef.damage[0] + Math.random()*(eDef.damage[1]-eDef.damage[0]));
       combatState.playerHp = Math.max(0, combatState.playerHp - dmg);
       print(buildAttackProse(e.weapon, 'body', true, combatState.playerHp<=0?'killing':'hitting', 'you', e.name));
-      if (combatState.playerHp <= 0) { combatEnd('enemy_killed_player'); return; }
+      if (combatState.playerHp <= 0) {
+        combatState.lastPlayerHitWeapon = e.weapon;
+        combatState.lastPlayerHitZone = 'body';
+        combatEnd('enemy_killed_player'); return;
+      }
     }
     printCombatOptions();
   }
@@ -9570,10 +9985,11 @@ async function combatEnd(result) {
     if (hasSuppressor(pw) && baseWeaponName(pw) === 'blok19') {
       // Fights still add some base heat, but the suppressor cuts the noise signature.
       // The heat was already applied per-kill in combatEnemyWentDown; no extra here.
-    } else if (baseWeaponName(pw) === 'blok19') {
+    } else if (baseWeaponName(pw) === 'blok19' || isShotgun(pw)) {
       // Gunshots — someone may have heard. Small ambient heat if not already at critical.
+      // Shotguns are especially loud; no suppressor option exists for them.
       if (G.policeHeat < 60) {
-        G.policeHeat = Math.min(60, G.policeHeat + 5);
+        G.policeHeat = Math.min(60, G.policeHeat + (isShotgun(pw) ? 8 : 5));
         logEvt('heat', G.policeHeat);
       }
     }
@@ -9587,6 +10003,20 @@ async function combatEnd(result) {
       runTransportRodriguezSave();
       return;
     }
+
+    // Default outcome: same zone/weapon lethality roll enemies get. Non-lethal
+    // means the clinic, not a free pass — you wake up with a bill.
+    const pWDef = weaponDef(combatState.lastPlayerHitWeapon || 'fists');
+    const pLethal = Math.random() < lethalChanceForZone(pWDef, combatState.lastPlayerHitZone, { equippedArmor: G.equippedArmor });
+    if (!pLethal) {
+      adjustKarma(karma);
+      combatState = null;
+      refreshContextButtons();
+      printBlank();
+      runClinicRecovery();
+      return;
+    }
+
     adjustKarma(karma);
     combatState = null;
     refreshContextButtons();
@@ -9611,9 +10041,200 @@ async function combatEnd(result) {
     checkArrestOutcome();
     checkBustCombatOutcome();
     checkWitnessCombatOutcome();
+    checkHitmanCombatOutcome();
   }
 }
 
+// Default non-lethal combat defeat — wake up at the clinic a day later, owing money.
+async function runClinicRecovery() {
+  print(`Everything goes dark before you can process what just happened.`, 'narration');
+  await sleep(800);
+  printBlank();
+  print(`...`, 'system');
+  await sleep(900);
+  printBlank();
+  print(`You wake up in a clinic bed, IV in your arm, a headache like a held grudge.`, 'narration');
+  await sleep(700);
+  print(`A nurse mentions, almost as an afterthought, that you were "lucky" and that "surgery went fine." Neither statement is followed up on.`, 'narration');
+  await sleep(800);
+
+  const debtAmount = 350 + Math.floor(Math.random() * 350); // $350-$700
+  G.flags.clinicDebt = (G.flags.clinicDebt || 0) + debtAmount;
+  logEvt('flag', 'clinicDebt', G.flags.clinicDebt);
+  print(`The bill comes to $${debtAmount}. "Whenever you get a chance," the nurse says, not quite meeting your eyes. You get the sense this isn't the first time she's had this conversation.`, 'narration');
+
+  advanceTime(24 * 60); // a day, lost
+  G.playerHp = 40;
+  logEvt('flag', 'playerHp', 40);
+  G.bleed = 0;
+  logEvt('flag', 'bleed', 0);
+  G.brokenArm = null;
+  G.brokenLeg = null;
+  logEvt('flag', 'brokenArm', null);
+  logEvt('flag', 'brokenLeg', null);
+  G.location = 'clinic';
+  logEvt('location', 'clinic');
+  printRoom('clinic', true);
+}
+
+// ── DEBT COLLECTION ──────────────────────────────────────────
+function checkDebtCollectionCall() {
+  if (!G.flags.clinicDebt || G.flags.clinicDebt <= 0) return;
+  if (G.flags.debtPaymentPlan) return; // calls stop once you're on a plan
+  if (dialogueSession || combatState || G.gameOver) return;
+  if (Math.random() < 0.10) {
+    runDebtCollectionCall();
+  }
+}
+
+// Once on a payment plan, missing the due date by more than 2 days gets you
+// a visit instead of a phone call.
+function checkDebtLateness() {
+  if (!G.flags.debtPaymentPlan || !G.flags.clinicDebt || G.flags.clinicDebt <= 0) return;
+  if (!G.flags.debtNextPaymentDue) return;
+  if (dialogueSession || combatState || G.gameOver) return;
+  if (G.flags.hitmanSentAtDue === G.flags.debtNextPaymentDue) return; // already sent for this cycle
+  if (G.gameMinutes > G.flags.debtNextPaymentDue + 2 * 24 * 60) {
+    triggerDebtHitman();
+  }
+}
+
+function runDebtCollectionCall() {
+  printBlank();
+  print(`Your phone rings. Unknown number. You answer anyway.`, 'narration');
+  print(`"Hello, this is calling from Majestic Night Financial Acquisitions Capital Solutions," a voice says, warm and clearly reading from a script. "We are calling regarding an outstanding debt of $${G.flags.clinicDebt}."`, 'narration');
+  openDialogue('debt_collector', `The voice waits, unbothered by the silence.`, [
+    { label: `"Fine. I'll pay."`, action: () => {
+      const cash = playerCashTotal();
+      if (cash < G.flags.clinicDebt) {
+        print(`You don't actually have that much on you. "...Yeah, about that —" You hang up before finishing the sentence.`);
+        closeDialogue();
+        return;
+      }
+      spendCash(G.flags.clinicDebt);
+      print(`You pay it off, all at once. The voice sounds almost disappointed there's nothing left to extract. "Thank you for your payment. Have a wonderful day."`);
+      G.flags.clinicDebt = 0;
+      logEvt('flag', 'clinicDebt', 0);
+      closeDialogue();
+    }},
+    { label: `"Ahhh geez dude, I got these pills bro, for my back bro... I can't afford that... can you do $10 a month?"`, action: () => {
+      print(`A pause on the line. "...Ten dollars. Per month." Another pause. "...Fine. We will accept ten dollars a month. Do not miss a payment."`);
+      G.flags.debtPaymentPlan = true;
+      logEvt('flag', 'debtPaymentPlan', true);
+      // First payment due in 1 day; every payment after resets it a month out.
+      G.flags.debtNextPaymentDue = G.gameMinutes + 24 * 60;
+      logEvt('flag', 'debtNextPaymentDue', G.flags.debtNextPaymentDue);
+      print(`You can mail payments from the post office once you've got an envelope and the cash. First one's due tomorrow.`, 'system');
+      closeDialogue();
+    }},
+    { label: `Just hang up`, action: () => {
+      print(`You hang up without saying anything. They'll call back. They always call back.`);
+      closeDialogue();
+    }},
+  ]);
+}
+
+function mailDebtPayment() {
+  if (!G.flags.clinicDebt || G.flags.clinicDebt <= 0) { print(`You don't owe anybody anything right now.`); return; }
+  if (!G.flags.debtPaymentPlan) { print(`You haven't actually set up a payment plan with anyone.`); return; }
+  if (!G.inventory.includes('envelope')) { print(`You'd need an envelope to mail anything.`); return; }
+  const cash = playerCashTotal();
+  if (cash < 10) { print(`You don't even have $10 on you.`); return; }
+  spendCash(10);
+  const idx = G.inventory.indexOf('envelope');
+  G.inventory.splice(idx, 1);
+  logEvt('inventory_remove', 'envelope');
+  G.flags.clinicDebt = Math.max(0, G.flags.clinicDebt - 10);
+  logEvt('flag', 'clinicDebt', G.flags.clinicDebt);
+  print(`You seal $10 in the envelope and drop it in the outgoing mail slot. Somewhere, a call center logs it.`);
+
+  G.flags.debtPaymentsMade = (G.flags.debtPaymentsMade || 0) + 1;
+  logEvt('flag', 'debtPaymentsMade', G.flags.debtPaymentsMade);
+
+  if (G.flags.clinicDebt === 0) {
+    print(`That's the last of it. You're paid off.`);
+    G.flags.debtPaymentPlan = false;
+    logEvt('flag', 'debtPaymentPlan', false);
+  } else {
+    print(`$${G.flags.clinicDebt} left.`, 'system');
+    // Next payment due one in-game month from now
+    G.flags.debtNextPaymentDue = G.gameMinutes + 30 * 24 * 60;
+    logEvt('flag', 'debtNextPaymentDue', G.flags.debtNextPaymentDue);
+    // A silly surprise for anyone who actually sticks with the plan this long
+    if (G.flags.debtPaymentsMade === 2 && !G.flags.debtSurpriseShown) {
+      G.flags.debtSurpriseShown = true;
+      logEvt('flag', 'debtSurpriseShown', true);
+      printBlank();
+      print(`A few days later, something arrives at your apartment. A hand-written thank-you card, signed "Kevin, Collections Dept." Taped inside: a coupon for a free breadstick at a restaurant that closed in 2019.`, 'narration');
+    }
+  }
+  updateStatus();
+}
+
+// Debt collector hitman — a genuinely unbeatable enemy, mirroring Rodriguez's
+// gear in reverse. The only realistic way out of this fight is fleeing.
+function triggerDebtHitman() {
+  G.flags.hitmanSentAtDue = G.flags.debtNextPaymentDue;
+  G.flags.hitmanActive = true;
+  G.flags.hitmanCombatActive = true;
+  G.flags.hitmanLastCheckDay = Math.floor(G.gameMinutes / 1440);
+  logEvt('flag', 'hitmanSentAtDue', G.flags.hitmanSentAtDue);
+  logEvt('flag', 'hitmanActive', true);
+  logEvt('flag', 'hitmanCombatActive', true);
+  logEvt('flag', 'hitmanLastCheckDay', G.flags.hitmanLastCheckDay);
+  printBlank();
+  if (!G.flags.hitmanMetOnce) {
+    G.flags.hitmanMetOnce = true;
+    logEvt('flag', 'hitmanMetOnce', true);
+    print(`A man in a very good suit is waiting for you when you get where you're going. You don't remember him arriving.`, 'narration');
+    print(`"Majestic Night Financial Acquisitions Capital Solutions sent me," he says, pleasantly. "You missed a payment."`, 'narration');
+  } else {
+    print(`Him again. Same suit, same aviators, same unbothered pleasantness.`, 'narration');
+    print(`"Still outstanding," he says, like he's mentioning the weather.`, 'narration');
+  }
+  print(`He's already reaching into his jacket.`, 'failure');
+  printBlank();
+  startMultiCombat(
+    [{ name: 'the collections guy', weapon: 'waltherSuppressed',
+       equippedArmor: { head: 'aviator sunglasses', body: 'hitmans vest', legs: 'dress shoes' } }],
+    [], false, true
+  );
+}
+
+// Once he's out there, he keeps coming back — 25% chance each in-game day —
+// until he's killed, the player dies, or the debt actually gets paid off.
+function checkHitmanRecurrence() {
+  if (!G.flags.hitmanActive) return;
+  if (!G.flags.clinicDebt || G.flags.clinicDebt <= 0) {
+    G.flags.hitmanActive = false;
+    logEvt('flag', 'hitmanActive', false);
+    return;
+  }
+  if (dialogueSession || combatState || G.gameOver) return;
+  const today = Math.floor(G.gameMinutes / 1440);
+  if (G.flags.hitmanLastCheckDay === today) return; // already rolled today
+  G.flags.hitmanLastCheckDay = today;
+  logEvt('flag', 'hitmanLastCheckDay', today);
+  if (Math.random() < 0.25) {
+    triggerDebtHitman();
+  }
+}
+
+// Resolves whether the hitman fight ended in his death (only way to actually
+// stop him for good short of paying the debt off or dying yourself).
+function checkHitmanCombatOutcome() {
+  if (!G.flags.hitmanCombatActive) return;
+  if (combatState) return;
+  G.flags.hitmanCombatActive = false;
+  logEvt('flag', 'hitmanCombatActive', false);
+  if (G.gameOver) return;
+  if (G.flags['killed_the_collections_guy']) {
+    print(`Somehow, against every reasonable expectation, he's actually dead.`, 'system');
+    print(`Nobody else comes asking about this particular debt again.`, 'system');
+    G.flags.hitmanActive = false;
+    logEvt('flag', 'hitmanActive', false);
+  }
+}
 // One-off scripted save — specific to the prisoner transport fight only.
 // If the player loses that fight, Rodriguez saves them at the last second
 // rather than the game ending. Not a general mechanic; not reused elsewhere.
@@ -11123,6 +11744,12 @@ function talkDeputy() {
   if (G.flags.hedRecommendedPressure && !G.flags.knowsRodriguezWarrant) {
     print(`Rodriguez is asleep, same as always. But there's a folder on the desk next to him, in his handwriting — unmistakable, all caps, pressed too hard with the pen.`);
     print(`Minor infractions. A couple of outstanding fines. And paperclipped right on top: a domestic dispute complaint that looks suspiciously fresh — like it was drafted this week, not pulled from a filing cabinet.`);
+    print(`There's a line about his employer, too — a name, "La Señora," nothing else attached to it.`);
+    if (!G.flags.knowsLaSenora) {
+      print(`"...That must be the flamboyant... person...? that you saw at the club," you think.`);
+      G.flags.knowsLaSenora = true;
+      logEvt('flag', 'knowsLaSenora', true);
+    }
     print(`"...Damn," you think. "Rodriguez did his homework."`);
     print(`Maybe if things go sideways, you can use this to put some heat on the guy.`);
     G.flags.knowsRodriguezWarrant = true;
@@ -11852,7 +12479,7 @@ function gatherEvidence(method) {
 
 // Surveillance — spend time watching the club exterior, free, costs time
 function cmdSurveil() {
-  if (G.location !== 'nightclub' && G.location !== 'district') {
+  if (G.location !== 'nightclub') {
     print(`Nothing to surveil from here.`); return;
   }
   if (!G.flags.bustInvestigationStarted) { print(`You don't have a reason to be watching anyone.`); return; }
@@ -12109,6 +12736,10 @@ function gatherPhysicalEvidence() {
   print(`Inside: a laptop, a filing cabinet, and — tucked under a floor panel — an actual bookkeeping ledger. Handwritten. The real numbers.`);
   print(`Most of it is exactly what you'd expect. One line isn't: a recurring payment, monthly, to the Desert Rose Inn. Not a guest bill. A standing arrangement.`);
   print(`You take photos of everything with your phone.`);
+  if (!G.inventory.includes('phone')) {
+    G.inventory.push('phone');
+    logEvt('inventory_add', 'phone');
+  }
   G.flags.knowsMotel = true;
   logEvt('flag', 'knowsMotel', true);
   gatherEvidence('physical');
@@ -13560,6 +14191,9 @@ function renderCombatButtons() {
       const total = G.gunMag + (G.gunChambered ? 1 : 0);
       if (total < MAG_CAPACITY + 1) buttons.push({ label: 'reload', cmd: 'reload' });
     }
+    if (isShotgun(pw)) {
+      if (G.shotgunShells < getShotgunCapacity(pw)) buttons.push({ label: 'reload', cmd: 'reload' });
+    }
     buttons.push({ label: 'run', cmd: 'run' });
   }
 
@@ -13639,8 +14273,8 @@ const DEV_GO_ZONES = {
 // from whatever's left in the item pools — anything added later that isn't
 // explicitly categorized just shows up there instead of vanishing.
 const DEV_GIVE_CATEGORIES = {
-  'Weapons': ['fists','baseball bat','pocket knife','blok19'],
-  'Ammo': ['small box of 9mm','large box of 9mm'],
+  'Weapons': ['fists','baseball bat','pocket knife','blok19','semi-auto shotgun','sawed-off shotgun'],
+  'Ammo': ['small box of 9mm','large box of 9mm','box of buckshot','box of slugs','box of ap rounds'],
   'Mods': ['nails','laser sight','scope','switch','suppressor'],
   'Food': ['granola bar','discarded sandwich','sandwich','soup','soup can','chips','jerky','candy bar'],
   'Drink': ['coffee','bad coffee','water bottle','energy drink','beer','moonshine'],
@@ -13650,7 +14284,7 @@ const DEV_GIVE_CATEGORIES = {
   'Bags': ['backpack','duffel bag'],
   'Quest Items': ['dr_whitfield_badge','lab coat','clipboard','forged credentials','tin foil badge',
     'warrant','laptop','carburetor','drive chain','battery'],
-  'Dev': ['dev duffel','aviator sunglasses','lucky sneakers','rodriguez44'], // future NPC-exclusive items belong here too
+  'Dev': ['dev duffel','aviator sunglasses','lucky sneakers','rodriguez44','hitmans vest','dress shoes','waltherSuppressed'],
 };
 
 // Given an exit's destination room key (and the raw exit key used internally,
@@ -13906,8 +14540,13 @@ function refreshContextButtons() {
   if (getPresentNpcs(G.location).length) {
     buttons.push({ label: 'talk', action: () => { roomMenuMode = 'talk'; refreshContextButtons(); } });
   }
-  if ((G.location === 'nightclub' || G.location === 'district') && G.flags.bustInvestigationStarted && !G.flags.evidence_surveillance) {
+  if (G.location === 'nightclub' && G.flags.bustInvestigationStarted && !G.flags.evidence_surveillance) {
     buttons.push({ label: 'surveil', cmd: 'surveil' });
+  }
+  // Mail a debt payment — post office, on a payment plan, have an envelope and the cash
+  if (G.location === 'post_office_exterior' && G.flags.debtPaymentPlan && G.flags.clinicDebt > 0 &&
+      G.inventory.includes('envelope') && playerCashTotal() >= 10) {
+    buttons.push({ label: 'mail payment', cmd: 'mail payment' });
   }
   if (G.flags.devMode) {
     buttons.push({ label: 'dev', action: () => { roomMenuMode = 'dev'; refreshContextButtons(); } });
