@@ -2255,7 +2255,7 @@ const NPC_SHOPS = {
       { item: 'jerky',         price: 3,  randomChance: 0.5 },
       { item: 'condom',         price: 2,  randomChance: 0.4 },
       { item: 'envelope',       price: 1 },
-      { item: 'battery',        price: 28 },
+      { item: 'battery',        price: 25 },
     ],
     buys: false,
     greet: () => `Marcus barely looks up. "Yeah. What do you need."${G.inventory.some(i=>i.startsWith('winning ticket')) ? ' He glances at your pocket. "You redeeming that ticket?"' : ''}`,
@@ -6525,10 +6525,15 @@ function cmdTalk(obj) {
     }
   }
 
+  // Camp resident with the carburetor (motorbike quest)
+  if (G.location === 'homeless_camp' && (r.includes('camp resident 2') || r.includes('wire') || r.includes('repairing') || r.includes('other') || r.includes('another'))) {
+    talkCampResident2(); return;
+  }
+
   // One-liner NPCs — match on key name or whole words from their display name only
   const oneLiners = ['laundromat_woman','laundromat_oldman','laundromat_regular',
     'motel_owner','courthouse_clerk','nightclub_bouncer','nightclub_bartender',
-    'zoo_attendant','groundskeeper','camp_resident_1','camp_resident_2'];
+    'zoo_attendant','groundskeeper','camp_resident_1'];
   for (const npc of oneLiners) {
     const words = (NPCS[npc]?.name || '').toLowerCase().split(/\s+/).filter(w => w.length >= 4);
     const matchesKey = r.includes(npc.replace(/_/g,' '));
@@ -7020,6 +7025,41 @@ function talkParkWoman() {
   ]);
 }
 
+function talkCampResident2() {
+  const greeting = !G.flags.metCarbGuy
+    ? `He's repairing something with wire, with the focus of someone who has had to fix things his whole life.`
+    : G.flags.carbGiven
+      ? `He nods at you, still tinkering with something. "Lighter's still going," he says.`
+      : `"Still need that lighter, if you find one," he says, not looking up.`;
+
+  const opts = [];
+  if (!G.flags.metCarbGuy) {
+    opts.push({ label: "Ask what he's working on", action: () => {
+      G.flags.metCarbGuy = true;
+      logEvt('flag', 'metCarbGuy', true);
+      print(`He holds up an old carburetor, turning it over in his hands. "Found this. Well —" he glances around, lowers his voice, "— I stole, erm, I mean... borrowed this from someone in town the other day. Don't need it myself."`);
+      print(`"I'll trade it, though. You got a lighter on you? Mine's dead."`);
+    }});
+  } else if (!G.flags.carbGiven) {
+    opts.push({ label: "Give him a lighter", action: () => {
+      const idx = G.inventory.indexOf('lighter');
+      if (idx === -1) { print(`You don't have a lighter to give him.`); return; }
+      G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', 'lighter');
+      G.inventory.push('carburetor');
+      logEvt('inventory_add', 'carburetor');
+      G.flags.carbGiven = true;
+      logEvt('flag', 'carbGiven', true);
+      print(`He lights it, flicks it a couple times just to check, and tosses you the carburetor. "Deal's a deal."`);
+      updateStatus();
+    }});
+  }
+  opts.push({ label: "Ask if he's from town", action: () => print(`"You from town?" he asks back. His tone doesn't assign value to either answer.`) });
+  opts.push({ label: "Watch him work", action: () => print(`He's repairing something with wire. He does it with the focus of someone who has had to fix things his whole life.`) });
+
+  openDialogue('camp_resident_2', greeting, opts);
+}
+
 function talkKiteKid() {
   const greeting = G.flags.helpedKid
     ? `The kid waves when he sees you. The kite is going pretty well now.`
@@ -7089,7 +7129,8 @@ function talkHector() {
     { label: "Ask about the old motorbike in the second bay", action: () => {
       if (!G.flags.bikeOffered) {
         print(`Hector glances at it. "Came in years ago. Owner never came back for it. Just an old bike, but the frame's solid."`);
-        print(`"I could get it running. Need a carburetor, a drive chain, and a battery — don't have any of that lying around. Sneed's should have it, or something close enough."`);
+        print(`"I could get it running. Need a carburetor, a drive chain, and a battery." He checks a shelf. "We're out of batteries here — Wally's oughta have one, that part's normal enough."`);
+        print(`"This carburetor and this chain, though —" he taps the bike, "— these are old enough I don't know if anybody even makes replacements anymore. You're not buying those anywhere. You're gonna have to ask around, get lucky, or both."`);
         print(`"You bring me those three, bike's yours. I got no use for it just sitting there."`, 'special');
         G.flags.bikeOffered = true;
         G.flags.bikeMissionActive = true;
@@ -7114,7 +7155,8 @@ function talkHector() {
 
 function completeBikeQuest() {
   for (const p of BIKE_PARTS) {
-    G.inventory = G.inventory.filter(i => i !== p);
+    const idx = G.inventory.indexOf(p);
+    if (idx !== -1) G.inventory.splice(idx, 1);
     logEvt('inventory_remove', p);
   }
   G.flags.bikeStarted = true;
@@ -7349,6 +7391,28 @@ function talkCuz() {
       G.flags.knowsStillLocation = true;
       logEvt('flag', 'knowsStillLocation', true);
     }});
+
+    if (!G.flags.metChainCuz) {
+      options.push({ label: "Ask if he's got any spare parts lying around", action: () => {
+        G.flags.metChainCuz = true;
+        logEvt('flag', 'metChainCuz', true);
+        print(`Cuz thinks about it, then brightens. "Oh — yeah, actually. There's a drive chain out back, off a four-wheeler Earl was fixing forever ago. Never got put back on anything."`);
+        print(`"You could have it. Long as you got me something for it. You got a candy bar or something? I'm starving."`);
+      }});
+    } else if (!G.flags.chainGiven) {
+      options.push({ label: "Give him a candy bar", action: () => {
+        const idx = G.inventory.indexOf('candy bar');
+        if (idx === -1) { print(`You don't have a candy bar to give him.`); return; }
+        G.inventory.splice(idx, 1);
+        logEvt('inventory_remove', 'candy bar');
+        G.inventory.push('drive chain');
+        logEvt('inventory_add', 'drive chain');
+        G.flags.chainGiven = true;
+        logEvt('flag', 'chainGiven', true);
+        print(`Cuz tears into the candy bar immediately, then digs the drive chain out from behind the truck and hands it over. "There you go."`);
+        updateStatus();
+      }});
+    }
   }
 
   openDialogue('cuz', earlAround ? `Cuz looks at you. He seems like he has things to say.` : `Cuz looks at you, glad for the company.`, options);
