@@ -1800,11 +1800,18 @@ const ITEM_DESC = {
   'otc painkillers':    'Over the counter. Not the real stuff.',
   'small box of 9mm':   'A small 50 round box of 9mm ammo. No brand printed on it. You get what you get.',
   'large box of 9mm':   'A large 100 round box of 9mm ammo. No brand printed on it. You get what you get.',
-  'box of buckshot':    'A box of 10 shotgun shells, loaded with buckshot — nine pellets each, wide spread, forgiving aim.',
-  'box of slugs':       'A box of 5 shotgun slugs — one heavy solid projectile per shell. Devastating if it lands. Harder to place.',
+  'small box of buckshot': 'A small box of 10 shotgun shells, loaded with buckshot — nine pellets each, wide spread, forgiving aim.',
+  'large box of buckshot': 'A large box of 25 shotgun shells, loaded with buckshot.',
+  'small box of slugs':    'A small box of 10 shotgun slugs — one heavy solid projectile per shell. Devastating if it lands. Harder to place.',
+  'large box of slugs':    'A large box of 25 shotgun slugs.',
+  'small box of 9mm AP':   'A small box of 50 armor-piercing 9mm rounds. Punches through most of what regular ammo can\'t.',
+  'large box of 9mm AP':   'A large box of 100 armor-piercing 9mm rounds.',
+  'loose 9mm round':       'A single loose 9mm round, rattling around without a box.',
+  'loose 9mm AP round':    'A single loose armor-piercing 9mm round.',
+  'loose buckshot shell':  'A single loose shotgun shell, loaded with buckshot.',
+  'loose slug':            'A single loose shotgun slug.',
   'semi-auto shotgun':  'A pump-action semi-auto shotgun. Takes buckshot or slugs — not both at once.',
   'sawed-off shotgun':  'A double-barrel shotgun, sawed down. Holds two shells, buckshot or slugs. Wide spread, wild aim.',
-  'box of ap rounds':   'A box of 20 armor-piercing 9mm rounds. Punches through most of what regular ammo can\'t.',
   'worms':              'A small container of nightcrawlers. Classic bait. Works for most freshwater fish.',
   'cricket bait':       'Live crickets in a perforated cup. Good for sunfish and trout.',
   'stink bait':         'A jar of something that smells like death and ambition. Catfish love it.',
@@ -1906,9 +1913,16 @@ const ITEM_VALUES = {
   'otc painkillers':     12,
   'small box of 9mm':   27,
   'large box of 9mm':   50,
-  'box of buckshot':    35,
-  'box of slugs':       40,
-  'box of ap rounds':   65,
+  'small box of 9mm AP':   60,
+  'large box of 9mm AP':  110,
+  'small box of buckshot': 35,
+  'large box of buckshot': 80,
+  'small box of slugs':    40,
+  'large box of slugs':    90,
+  'loose 9mm round':        1,
+  'loose 9mm AP round':     2,
+  'loose buckshot shell':   4,
+  'loose slug':             5,
   'semi-auto shotgun': 165,
   'sawed-off shotgun': 100,
   'worms':               3,
@@ -1963,7 +1977,9 @@ const ITEM_SIZE = {
   'worms': 'small', 'cricket bait': 'small', 'stink bait': 'small', 'cut bait': 'small',
   'pain pills': 'small', 'otc painkillers': 'small', 'antiseptic': 'small',
   'small box of 9mm': 'small', 'scratch ticket': 'small', 'paperback': 'small',
-  'box of buckshot': 'small', 'box of slugs': 'small', 'box of ap rounds': 'small',
+  'small box of buckshot': 'small', 'large box of buckshot': 'small', 'small box of slugs': 'small', 'large box of slugs': 'small',
+  'small box of 9mm AP': 'small', 'large box of 9mm AP': 'small',
+  'loose 9mm round': 'small', 'loose 9mm AP round': 'small', 'loose buckshot shell': 'small', 'loose slug': 'small',
   'weed': 'small', 'stimulants': 'small', 'fentanyl': 'small',
   'pocket knife': 'small', 'flask': 'small', 'cheap watch': 'small',
   'phone': 'small', 'envelope': 'small',
@@ -2004,6 +2020,10 @@ const CAP_COST = {
 
 // Named overrides for items whose bulk doesn't match their theft-size tier
 const CAP_COST_OVERRIDE = {
+  'loose 9mm round':      0.02,
+  'loose 9mm AP round':   0.02,
+  'loose buckshot shell': 0.03,
+  'loose slug':           0.04,
   'phone':            0.05,  // barely weighs anything
   'envelope':         0.05,
   'carburetor':       5.0,   // huge, unwieldy engine part
@@ -2109,11 +2129,32 @@ const MAX_CHARGES = {
   'antiseptic':        3,
   'bandages':          2,
   'otc painkillers':   4,
-  'small box of 9mm':   50,
-  'large box of 9mm':  100,
-  'box of buckshot':    10,
-  'box of slugs':        5,
-  'box of ap rounds':   20,
+  'small box of 9mm':      50,
+  'large box of 9mm':     100,
+  'small box of 9mm AP':   50,
+  'large box of 9mm AP':  100,
+  'small box of buckshot': 10,
+  'large box of buckshot': 25,
+  'small box of slugs':    10,
+  'large box of slugs':    25,
+};
+
+// Loose ammo — what comes back into inventory when you switch ammo types
+// outside of combat rather than dumping it. Plain stackable inventory items
+// (not multi-use containers), capped per caliber.
+const LOOSE_AMMO_CAP = {
+  'loose 9mm round':          20,
+  'loose 9mm AP round':       20,
+  'loose buckshot shell':     10,
+  'loose slug':                10,
+};
+
+// Maps an ammo family to its small/large box items and loose equivalent
+const AMMO_FAMILIES = {
+  '9mm':      { small: 'small box of 9mm',        large: 'large box of 9mm',        loose: 'loose 9mm round' },
+  '9mm_ap':   { small: 'small box of 9mm AP',      large: 'large box of 9mm AP',     loose: 'loose 9mm AP round' },
+  buckshot:   { small: 'small box of buckshot',    large: 'large box of buckshot',   loose: 'loose buckshot shell' },
+  slug:       { small: 'small box of slugs',       large: 'large box of slugs',      loose: 'loose slug' },
 };
 
 function isMultiUse(item) {
@@ -2307,8 +2348,10 @@ const NPC_SHOPS = {
       { item: 'sawed-off shotgun', price: 100, randomChance: 0.25 },
       { item: 'small box of 9mm',  price: 27 },
       { item: 'large box of 9mm',  price: 50, randomChance: 0.5 },
-      { item: 'box of buckshot',   price: 38, randomChance: 0.4 },
-      { item: 'box of slugs',      price: 42, randomChance: 0.3 },
+      { item: 'small box of buckshot', price: 35, randomChance: 0.4 },
+      { item: 'large box of buckshot', price: 80, randomChance: 0.2 },
+      { item: 'small box of slugs',    price: 40, randomChance: 0.3 },
+      { item: 'large box of slugs',    price: 90, randomChance: 0.15 },
       { item: 'laptop',            price: 45 },
       { item: 'guitar',            price: 35, randomChance: 0.3 },
       { item: 'walkman',           price: 8,  randomChance: 0.5 },
@@ -2417,9 +2460,12 @@ const NPC_SHOPS = {
       // Ammo
       { item: 'small box of 9mm',  price: 30  },
       { item: 'large box of 9mm',  price: 55  },
-      { item: 'box of buckshot',   price: 35  },
-      { item: 'box of slugs',      price: 40  },
-      { item: 'box of ap rounds',  price: 65,  randomChance: 0.6  },
+      { item: 'small box of buckshot', price: 35  },
+      { item: 'large box of buckshot', price: 80,  randomChance: 0.6 },
+      { item: 'small box of slugs',    price: 40  },
+      { item: 'large box of slugs',    price: 90,  randomChance: 0.5 },
+      { item: 'small box of 9mm AP',   price: 60,  randomChance: 0.6 },
+      { item: 'large box of 9mm AP',   price: 110, randomChance: 0.35 },
       // Occasional hardware
       { item: 'blok19',           price: 110, randomChance: 0.35 },
       { item: 'semi-auto shotgun', price: 165, randomChance: 0.30 },
@@ -3278,7 +3324,9 @@ function bjDealerPlay() {
 // ═══════════════════════════════════════════════
 const out = document.getElementById('output');
 
+let outputSuppressed = false; // set true across a reset, cleared when a new game actually begins
 function print(text, cls='narration') {
+  if (outputSuppressed) return;
   if (text===null||text===undefined) return;
   const div = document.createElement('div');
   div.className = 'line ' + cls;
@@ -4866,6 +4914,7 @@ function showRestartBtn() {
 
 function fullReset() {
   sessionGen++; // invalidates any in-flight async narrative sequence (death, epilogue, etc.)
+  outputSuppressed = true; // belt-and-suspenders: blocks any stale tail-end print too, cleared when the next game actually starts
   G.playerName=''; G.location='apartment'; G.inventory=[];
   G.karma=0; G.flags={}; G.eventLog=[];
   G.turnCount=0; G.isReplaying=false; G.gameOver=false;
@@ -5232,6 +5281,11 @@ function interceptSpecial(raw) {
     return true;
   }
 
+  // Save/history must ALWAYS work, even mid-dialogue or mid-combat — this is
+  // the player's critical escape hatch if something else is stuck or broken.
+  const rawLowerTrim = raw.toLowerCase().trim();
+  if (VERBS.history.includes(rawLowerTrim)) { cmdHistory(); return true; }
+
   // Active dialogue intercept (highest priority)
   if (dialogueSession && handleDialogueInput(raw)) return true;
 
@@ -5389,15 +5443,33 @@ function cmdLookAtOwnedItem(item) {
     return;
   }
 
-  // Firearm — show magazine count, works for modified variants too
-  if (baseWeaponName(item) === 'blok19') {
+  // Firearms — general prose, then mods, then exact ammo status (type + count)
+  if (baseWeaponName(item) === 'blok19' || isShotgun(item)) {
+    const baseName = baseWeaponName(item);
+    const baseDesc = ITEM_DESC[baseName];
+    if (baseDesc) print(baseDesc);
+
     const attached = G.weaponAttachments[item] || [];
-    const modPhrase = attached.length ? ` with ${attached.join(' and ')}` : '';
-    print(`You look over your Blok-19${modPhrase}.`);
-    const mag = G.gunMag || 0;
-    const chambered = G.gunChambered ? 1 : 0;
-    print(`You drop the magazine and check it — ${mag} round${mag===1?'':'s'} loaded${chambered ? ', plus one already in the chamber.' : '.'}`);
-    print(`You slide it back in.`);
+    if (attached.length) print(`It's rigged with ${attached.join(' and ')}.`);
+
+    if (baseName === 'blok19') {
+      const mag = G.gunMag || 0;
+      const chambered = G.gunChambered ? 1 : 0;
+      const ammoLabel = G.gunAmmoType === 'ap' ? '9mm AP' : '9mm';
+      if (mag === 0 && !chambered) {
+        print(`You check the magazine. Empty.`);
+      } else {
+        print(`You check the magazine — ${mag} round${mag===1?'':'s'} of ${ammoLabel} loaded${chambered ? ', as well as a round in the chamber' : ''}.`);
+      }
+    } else {
+      const shells = G.shotgunShells || 0;
+      const ammoLabel = G.shotgunAmmoType === 'slug' ? 'slugs' : 'buckshot';
+      if (shells === 0) {
+        print(`You check the tube. Empty.`);
+      } else {
+        print(`You check the tube — ${shells} shell${shells===1?'':'s'} of what look${shells===1?'s':''} like ${ammoLabel} loaded.`);
+      }
+    }
     return;
   }
 
@@ -6191,6 +6263,10 @@ let dialogueSession = null;
 //   disabled: bool | function () => bool (optional) — hide this option when true
 // }]
 function openDialogue(npcKey, greeting, options) {
+  // Marker only — replay ignores unrecognized EVT keys. Lets a player manually
+  // find and trim back to "right before this conversation" if something in it
+  // goes wrong, without losing everything since the start of the session.
+  logEvt('convo_start', npcKey);
   dialogueSession = { npcKey, options };
   if (greeting) { print(greeting); printBlank(); }
   printDialogueOptions();
@@ -6244,7 +6320,14 @@ function handleDialogueInput(raw) {
           G.flags[seenKey] = true;
           logEvt('flag', seenKey, true);
         }
-        opt.action();
+        try {
+          opt.action();
+        } catch (err) {
+          print(`Something went wrong there. Ending the conversation so you're not stuck.`, 'system');
+          console.error('Dialogue action error:', err);
+          closeDialogue();
+          return true;
+        }
         // If option has sub-options (branching tree), push them into session
         if (opt.then && dialogueSession === sessionBefore && dialogueSession) {
           dialogueSession.options = opt.then;
@@ -6274,6 +6357,7 @@ function handleDialogueInput(raw) {
 }
 
 function closeDialogue() {
+  logEvt('convo_end');
   dialogueSession = null;
   print(`You wrap up the conversation.`);
 }
@@ -6355,7 +6439,7 @@ function cmdTalk(obj) {
     talkSheriff(); return;
   }
   // Deputy
-  if ((r.includes('deputy')||r.includes('hicks')) && G.location==='police_station') {
+  if ((r.includes('deputy')||r.includes('hicks')||r.includes('rodriguez')) && G.location==='police_station') {
     talkDeputy(); return;
   }
   // Alley dealer — ask about fentanyl
@@ -6873,8 +6957,30 @@ function talkBenchMan() {
     : `He opens one eye. "You got a cigarette?" He doesn't have shoes.`;
 
   openDialogue('bench_man', greeting, [
-    { label: "Give him money", action: () => handleGive('give money') },
-    { label: "Give him food", action: () => handleGive('give food') },
+    { label: "Give him money", action: () => {
+      const cash = playerCashTotal();
+      if (cash < 5) { print(`You don't really have anything to spare.`); return; }
+      spendCash(5);
+      G.flags.gaveBenchMan = true;
+      logEvt('flag', 'gaveBenchMan', true);
+      adjustKarma(5);
+      logEvt('karma', G.karma);
+      print(`You hand him $5. "...Thanks," he says, like it doesn't happen often.`);
+      updateStatus();
+    }},
+    { label: "Give him food", action: () => {
+      const foodItem = G.inventory.find(i => ['granola bar','sandwich','discarded sandwich','jerky','chips','candy bar','soup'].includes(i));
+      if (!foodItem) { print(`You don't have any food on you to give him.`); return; }
+      const idx = G.inventory.indexOf(foodItem);
+      G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', foodItem);
+      G.flags.gaveBenchMan = true;
+      logEvt('flag', 'gaveBenchMan', true);
+      adjustKarma(5);
+      logEvt('karma', G.karma);
+      print(`You hand him the ${foodItem}. He eats like he means it.`);
+      updateStatus();
+    }},
     { label: "Ask his name", action: () => {
       if (!G.flags.benchManName) {
         G.flags.benchManName = true;
@@ -9572,6 +9678,57 @@ function cmdEquip(obj) {
 // attachments currently); falls through to a generic refusal for anything
 // unrecognized. Designed to be extended later for non-equipment puzzle
 // combinations without needing rework.
+// Merges loose ammo back into a box, topping it off. Returns true if this
+// was actually a loose-ammo merge request (handled here, successfully or
+// as an error) so the caller knows not to fall through to weapon recipes.
+function tryMergeLooseAmmo(loosePart, boxPart) {
+  const looseItem = Object.keys(LOOSE_AMMO_CAP).find(li =>
+    li.toLowerCase() === loosePart || loosePart.includes(li.toLowerCase()) || li.toLowerCase().includes(loosePart));
+  if (!looseItem) return false;
+
+  const allBoxes = Object.values(AMMO_FAMILIES).flatMap(f => [f.small, f.large]);
+  const boxItem = allBoxes.find(bi => bi.toLowerCase() === boxPart || boxPart.includes(bi.toLowerCase()));
+  if (!boxItem) return false;
+
+  const family = Object.keys(AMMO_FAMILIES).find(k => AMMO_FAMILIES[k].loose === looseItem);
+  if (!family || (AMMO_FAMILIES[family].small !== boxItem && AMMO_FAMILIES[family].large !== boxItem)) {
+    print(`Those aren't the same kind of ammo.`);
+    return true;
+  }
+
+  const looseCount = G.inventory.filter(i => i === looseItem).length;
+  if (looseCount === 0) { print(`You don't have any of that loose.`); return true; }
+  if (!G.inventory.includes(boxItem) || !G.itemCharges || !G.itemCharges[boxItem] || !G.itemCharges[boxItem].length) {
+    print(`You don't have a ${boxItem} with anything left in it.`); return true;
+  }
+
+  let remaining = looseCount, moved = 0;
+  for (let idx = 0; idx < G.itemCharges[boxItem].length && remaining > 0; idx++) {
+    const room = MAX_CHARGES[boxItem] - G.itemCharges[boxItem][idx];
+    const add = Math.min(room, remaining);
+    if (add > 0) {
+      G.itemCharges[boxItem][idx] += add;
+      remaining -= add;
+      moved += add;
+    }
+  }
+  if (moved === 0) { print(`That box is already full.`); return true; }
+
+  for (let i = 0; i < moved; i++) {
+    const idx = G.inventory.indexOf(looseItem);
+    if (idx !== -1) { G.inventory.splice(idx, 1); logEvt('inventory_remove', looseItem); }
+  }
+  logEvt('flag', `itemCharges_${boxItem}`, JSON.stringify(G.itemCharges[boxItem]));
+
+  if (remaining > 0) {
+    print(`You top off the ${boxItem} with ${moved} rounds. ${remaining} still loose — the box is full.`);
+  } else {
+    print(`You top off the ${boxItem} with ${moved} rounds. No loose ones left.`);
+  }
+  updateStatus();
+  return true;
+}
+
 function cmdCombine(obj) {
   if (!obj) { print(`Combine what with what?`); return; }
   const r = obj.toLowerCase().trim();
@@ -9579,6 +9736,8 @@ function cmdCombine(obj) {
   if (parts.length !== 2) {
     print(`Try "combine [item] with [item]".`); return;
   }
+
+  if (tryMergeLooseAmmo(parts[0], parts[1]) || tryMergeLooseAmmo(parts[1], parts[0])) return;
 
   const [aRaw, bRaw] = parts;
   const itemA = G.inventory.find(i => baseWeaponName(i).toLowerCase() === aRaw || i.toLowerCase() === aRaw || i.toLowerCase().includes(aRaw));
@@ -9699,40 +9858,81 @@ function isShotgun(name) { return SHOTGUN_NAMES.includes(baseWeaponName(name)); 
 function getShotgunCapacity(name) { return baseWeaponName(name) === 'sawed-off shotgun' ? 2 : 5; }
 const AP_ARMOR_IGNORE = 0.55; // AP rounds ignore 55% of whatever armor damage reduction would otherwise apply
 
-function drawOneRound(ammoType, boxPref) {
-  if (ammoType === 'ap') {
-    if (G.inventory.includes('box of ap rounds') && useMultiUseCharge('box of ap rounds')) return true;
-    return false;
+// Generic ammo draw — checks small box, then large box, then loose rounds of
+// that family (in whichever order boxPref prefers for the boxes). Loose ammo
+// is always the last resort since boxes are the "intended" source.
+function drawFromFamily(family, boxPref) {
+  const fam = AMMO_FAMILIES[family];
+  if (!fam) return false;
+  const order = boxPref === 'large' ? [fam.large, fam.small] : [fam.small, fam.large];
+  for (const box of order) {
+    if (G.inventory.includes(box) && useMultiUseCharge(box)) return true;
   }
-  if (boxPref === 'large') {
-    if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
-    if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
-    return false;
+  const looseIdx = G.inventory.indexOf(fam.loose);
+  if (looseIdx !== -1) {
+    G.inventory.splice(looseIdx, 1);
+    logEvt('inventory_remove', fam.loose);
+    return true;
   }
-  if (boxPref === 'small') {
-    if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
-    if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
-    return false;
-  }
-  // Default: small first then large
-  if (G.inventory.includes('small box of 9mm') && useMultiUseCharge('small box of 9mm')) return true;
-  if (G.inventory.includes('large box of 9mm') && useMultiUseCharge('large box of 9mm')) return true;
   return false;
 }
 
-function totalLooseRoundsOwned() {
+function totalOwnedInFamily(family) {
+  const fam = AMMO_FAMILIES[family];
+  if (!fam) return 0;
   let total = 0;
   if (G.itemCharges) {
-    if (G.itemCharges['small box of 9mm']) total += G.itemCharges['small box of 9mm'].reduce((a,b)=>a+b,0);
-    if (G.itemCharges['large box of 9mm']) total += G.itemCharges['large box of 9mm'].reduce((a,b)=>a+b,0);
+    if (G.itemCharges[fam.small]) total += G.itemCharges[fam.small].reduce((a,b)=>a+b,0);
+    if (G.itemCharges[fam.large]) total += G.itemCharges[fam.large].reduce((a,b)=>a+b,0);
   }
+  total += G.inventory.filter(i => i === fam.loose).length;
   return total;
 }
 
-function totalLooseAPRoundsOwned() {
-  let total = 0;
-  if (G.itemCharges && G.itemCharges['box of ap rounds']) total += G.itemCharges['box of ap rounds'].reduce((a,b)=>a+b,0);
-  return total;
+function drawOneRound(ammoType, boxPref) {
+  return drawFromFamily(ammoType === 'ap' ? '9mm_ap' : '9mm', boxPref);
+}
+
+function totalLooseRoundsOwned() { return totalOwnedInFamily('9mm'); }
+function totalLooseAPRoundsOwned() { return totalOwnedInFamily('9mm_ap'); }
+
+// Returns unused ammo to inventory when switching types OUTSIDE combat —
+// tops off any opened boxes of that family first, then stacks the remainder
+// as loose ammo (capped per caliber); anything past the cap is lost.
+function returnAmmoToInventory(family, count) {
+  if (count <= 0) return { toBoxes: 0, toLoose: 0, wasted: 0 };
+  const fam = AMMO_FAMILIES[family];
+  let remaining = count, toBoxes = 0;
+  for (const boxItem of [fam.small, fam.large]) {
+    if (!G.itemCharges || !G.itemCharges[boxItem]) continue;
+    for (let idx = 0; idx < G.itemCharges[boxItem].length && remaining > 0; idx++) {
+      const room = MAX_CHARGES[boxItem] - G.itemCharges[boxItem][idx];
+      const add = Math.min(room, remaining);
+      if (add > 0) {
+        G.itemCharges[boxItem][idx] += add;
+        remaining -= add;
+        toBoxes += add;
+      }
+    }
+    if (G.itemCharges[boxItem]) logEvt('flag', `itemCharges_${boxItem}`, JSON.stringify(G.itemCharges[boxItem]));
+  }
+  const looseCap = LOOSE_AMMO_CAP[fam.loose] || 10;
+  const looseNow = G.inventory.filter(i => i === fam.loose).length;
+  const looseRoom = Math.max(0, looseCap - looseNow);
+  const toLoose = Math.min(looseRoom, remaining);
+  for (let i = 0; i < toLoose; i++) G.inventory.push(fam.loose);
+  if (toLoose > 0) logEvt('inventory_add', fam.loose);
+  remaining -= toLoose;
+  return { toBoxes, toLoose, wasted: remaining };
+}
+
+function ammoReturnSummary(result, label) {
+  const parts = [];
+  if (result.toBoxes > 0) parts.push(`${result.toBoxes} back into ${result.toBoxes===1?'a box':'boxes'}`);
+  if (result.toLoose > 0) parts.push(`${result.toLoose} loose in your pocket`);
+  if (result.wasted > 0) parts.push(`${result.wasted} you just can't carry and let fall`);
+  if (!parts.length) return '';
+  return ` — ${parts.join(', ')}`;
 }
 
 function cmdReload(obj) {
@@ -9758,7 +9958,10 @@ function cmdReload(obj) {
     let ammoType = null;
     if (raw.includes('slug')) ammoType = 'slug';
     else if (raw.includes('buck') || raw.includes('shell')) ammoType = 'buck';
-    cmdReloadShotgun(ammoType);
+    let shotgunBoxPref = null;
+    if (raw.includes('small')) shotgunBoxPref = 'small';
+    else if (raw.includes('large')) shotgunBoxPref = 'large';
+    cmdReloadShotgun(ammoType, shotgunBoxPref);
     return;
   }
 
@@ -9770,39 +9973,44 @@ function cmdReload(obj) {
   cmdReloadBlok19(ammoType, boxPref);
 }
 
-function cmdReloadShotgun(ammoType) {
+function cmdReloadShotgun(ammoType, boxPref) {
   if (!ammoType) ammoType = G.shotgunAmmoType || 'buck';
   const ammoLabel = ammoType === 'slug' ? 'slugs' : 'buckshot';
-  const ammoItem = ammoType === 'slug' ? 'box of slugs' : 'box of buckshot';
+  const family = ammoType === 'slug' ? 'slug' : 'buckshot';
   const capacity = getShotgunCapacity(getPlayerWeapon());
 
   if (G.shotgunShells >= capacity && G.shotgunAmmoType === ammoType) {
     print(`Already full of ${ammoLabel}.`); return;
   }
 
-  // Switching ammo type mid-tube means dumping whatever's already loaded —
-  // you can't mix buckshot and slugs in the same tube.
+  // Switching ammo type mid-tube means unloading first. In combat, no time
+  // to save it — it's just racked out onto the ground. Out of combat, it
+  // goes back into boxes/loose.
   if (G.shotgunShells > 0 && G.shotgunAmmoType !== ammoType) {
     const oldLabel = G.shotgunAmmoType === 'slug' ? 'slugs' : 'buckshot';
-    print(`You rack out the ${oldLabel} still loaded to switch over to ${ammoLabel}.`);
+    if (combatState) {
+      print(`You rack out the ${oldLabel} still loaded to switch over to ${ammoLabel}.`);
+    } else {
+      const oldFamily = G.shotgunAmmoType === 'slug' ? 'slug' : 'buckshot';
+      const result = returnAmmoToInventory(oldFamily, G.shotgunShells);
+      print(`You rack out the ${oldLabel} still loaded to switch over to ${ammoLabel}${ammoReturnSummary(result)}.`);
+    }
     G.shotgunShells = 0;
   }
 
-  if (!isMultiUse(ammoItem) || !G.itemCharges || !G.itemCharges[ammoItem] || G.itemCharges[ammoItem].length === 0) {
-    if (G.shotgunShells === 0) {
-      print(`You don't have any ${ammoLabel} to load. You need a ${ammoItem}.`); return;
-    }
+  if (totalOwnedInFamily(family) === 0 && G.shotgunShells === 0) {
+    print(`You don't have any ${ammoLabel} to load. You need a box of ${ammoLabel}.`); return;
   }
 
   const needed = capacity - G.shotgunShells;
   let drawn = 0;
   for (let i = 0; i < needed; i++) {
-    if (!(G.inventory.includes(ammoItem) && useMultiUseCharge(ammoItem))) break;
+    if (!drawFromFamily(family, boxPref)) break;
     drawn++;
   }
 
   if (drawn === 0 && G.shotgunShells === 0) {
-    print(`You don't have any ${ammoLabel} to load. You need a ${ammoItem}.`); return;
+    print(`You don't have any ${ammoLabel} to load. You need a box of ${ammoLabel}.`); return;
   }
 
   G.shotgunShells += drawn;
@@ -9837,10 +10045,17 @@ function cmdReloadBlok19(ammoType, boxPref) {
     print(`Already topped off with ${ammoLabel}. Full mag, one in the chamber.`); return;
   }
 
-  // Switching ammo type mid-mag means dumping whatever's already loaded first
+  // Switching ammo type mid-mag means unloading first. In combat, no time to
+  // save it — it's just dropped. Out of combat, it goes back to boxes/loose.
   if ((G.gunMag > 0 || G.gunChambered) && G.gunAmmoType && G.gunAmmoType !== ammoType) {
     const oldLabel = G.gunAmmoType === 'ap' ? 'AP rounds' : 'standard rounds';
-    print(`You drop the mag — still loaded with ${oldLabel} — to switch over to ${ammoLabel}.`);
+    const total = G.gunMag + (G.gunChambered ? 1 : 0);
+    if (combatState) {
+      print(`You drop the mag — still loaded with ${oldLabel} — to switch over to ${ammoLabel}.`);
+    } else {
+      const result = returnAmmoToInventory(G.gunAmmoType === 'ap' ? '9mm_ap' : '9mm', total);
+      print(`You drop the mag — still loaded with ${oldLabel} — to switch over to ${ammoLabel}${ammoReturnSummary(result)}.`);
+    }
     G.gunMag = 0;
     G.gunChambered = false;
   }
@@ -11985,6 +12200,7 @@ function checkMission1Complete() {
   if ((G.flags.ticketsWritten||0) < 3) return false; // silently not ready, regular dialogue shows instead
 
   const gotRodriguez = G.flags.ticketed_park;
+  const allTicketed = TICKET_LOCATIONS.every(loc => G.flags[`ticketed_${loc}`]);
   print(`You hand over the ticket book. Hed flips through it without much interest.`);
   if (gotRodriguez) {
     print(`He stops on one page. Reads it twice. "...is this Rodriguez's car?"`);
@@ -11993,8 +12209,14 @@ function checkMission1Complete() {
   } else {
     print(`"Good work." He sets it down.`);
   }
-  print(`He hands you a few bills.`);
-  receiveCash(15);
+  if (allTicketed) {
+    print(`He flips back to the front and actually counts them. "Every single one?" He looks almost suspicious of you. "Every damn one of these hits, that's real money coming in. Fines, fees, all of it."`);
+    print(`He hands you more than he was planning to.`, 'special');
+    receiveCash(35);
+  } else {
+    print(`He hands you a few bills.`);
+    receiveCash(15);
+  }
   // Mission's over — the rest of the parking jobs get handled by someone else,
   // don't keep flagging them as outstanding forever.
   for (const loc of TICKET_LOCATIONS) {
@@ -12007,7 +12229,7 @@ function checkMission1Complete() {
   G.flags.policeTier = 1;
   logEvt('flag', 'policeMissionActive', null);
   logEvt('flag', 'policeTier', 1);
-  adjustKarma(2);
+  adjustKarma(allTicketed ? 4 : 2);
   logEvt('karma', G.karma);
   print(`"You got a good eye for this kind of thing." He means parking tickets. That's the bar.`, 'special');
   return true;
@@ -12385,6 +12607,8 @@ function checkArrestOutcome() {
       G.flags.bodies['bar'] = G.flags.bodies['bar'].filter(b => b.npcKey !== 'dale');
       logEvt('flag', 'bodies', JSON.stringify(G.flags.bodies));
     }
+    G.flags.daleKilled = true;
+    logEvt('flag', 'daleKilled', true);
     G.flags.arrestComplete = 'killed';
     logEvt('flag', 'arrestComplete', 'killed');
   } else {
@@ -12688,6 +12912,7 @@ function gatherWitnessAccount() {
       print(`He swings before you can say anything else.`);
       closeDialogue();
       G.flags.witnessCombatActive = true;
+      G.flags.combatPoliceProtected = true;
       logEvt('flag', 'witnessCombatActive', true);
       startCombat('the guy at the bar', 'fists', false, true);
     }},
@@ -12707,11 +12932,13 @@ function checkWitnessCombatOutcome() {
   if (!G.flags.witnessCombatActive) return;
   if (combatState) return;
   G.flags.witnessCombatActive = false;
+  G.flags.combatPoliceProtected = false;
   logEvt('flag', 'witnessCombatActive', false);
   if (G.gameOver) return;
 
   if (G.flags['killed_the_guy_at_the_bar']) {
     print(`He's on the ground. Not getting up.`);
+    print(`You call it in. Nobody seems especially surprised.`, 'narration');
     print(`Whatever he knew about the club, he just took it with him. There's no getting that back.`);
     G.flags.witnessKilled = true;
     logEvt('flag', 'witnessKilled', true);
@@ -12778,8 +13005,6 @@ function checkAndTriggerBustGate() {
 
 function reportBustProgress() {
   const n = G.flags.bustEvidence || 0;
-  print(`"What've you got," Hed asks.`);
-  print(`${n} piece${n===1?'':'s'} of evidence so far.`, 'system');
   if (G.flags.witnessKilled && !G.flags.witnessKilledReported) {
     G.flags.witnessKilledReported = true;
     logEvt('flag', 'witnessKilledReported', true);
@@ -12794,6 +13019,10 @@ function reportBustProgress() {
     return;
   }
   if (checkAndTriggerBustGate()) return;
+
+  // If we get here, there's nothing new since he last looked — this is a
+  // check-in, not a fresh report, so he shouldn't ask what you've got again.
+  print(`"Already been over what you brought me," Hed says. "${n} piece${n===1?'':'s'}, same as before."`);
   if (n < BUST_EVIDENCE_MAX) {
     print(`Hed nods slowly. "Keep going if you can. More you got, easier this goes."`);
   }
@@ -13875,6 +14104,7 @@ function confirmName() {
   startGame();
 }
 function startGame() {
+  outputSuppressed = false; // a real game is starting now — safe to print again
   buildShopStock();
   initGameTime();
   // Log the player name so it's embedded in the save and auto-restored on load
@@ -13944,6 +14174,7 @@ function startGame() {
   printRoom('apartment');
 }
 function loadFromLog() {
+  outputSuppressed = false; // loading a real game — safe to print again
   const raw = document.getElementById('load-textarea').value.trim();
   const nameField = document.getElementById('load-name-field');
   const loadName = nameField ? nameField.value.trim() : '';
@@ -14274,7 +14505,7 @@ const DEV_GO_ZONES = {
 // explicitly categorized just shows up there instead of vanishing.
 const DEV_GIVE_CATEGORIES = {
   'Weapons': ['fists','baseball bat','pocket knife','blok19','semi-auto shotgun','sawed-off shotgun'],
-  'Ammo': ['small box of 9mm','large box of 9mm','box of buckshot','box of slugs','box of ap rounds'],
+  'Ammo': ['small box of 9mm','large box of 9mm','small box of 9mm AP','large box of 9mm AP','small box of buckshot','large box of buckshot','small box of slugs','large box of slugs','loose 9mm round','loose 9mm AP round','loose buckshot shell','loose slug'],
   'Mods': ['nails','laser sight','scope','switch','suppressor'],
   'Food': ['granola bar','discarded sandwich','sandwich','soup','soup can','chips','jerky','candy bar'],
   'Drink': ['coffee','bad coffee','water bottle','energy drink','beer','moonshine'],
@@ -14322,7 +14553,7 @@ function getPresentNpcs(roomKey) {
       return (h >= 21 || h < 5) && !G.flags.mannyGone;
     }
     if (k === 'alley_dealer' && G.flags.alleyDealerGone) return false;
-    if (k === 'dale') return G.flags.daleJailed ? roomKey === 'jail_cells' : roomKey === 'bar';
+    if (k === 'dale') return G.flags.daleKilled ? false : (G.flags.daleJailed ? roomKey === 'jail_cells' : roomKey === 'bar');
     return true;
   });
 }
