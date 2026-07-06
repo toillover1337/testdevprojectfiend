@@ -1748,7 +1748,7 @@ const NPCS = {
   // Cemetery
   groundskeeper:      { name: 'the groundskeeper' },
   // Jeremy (fishing quest)
-  jeremy:             { name: 'Jeremy Ashworth' },
+  jeremy:             { name: 'Jeremy' },
   // Alley cat
   alley_cat:          { name: 'the alley cat' },
   // District one-liners
@@ -1764,6 +1764,8 @@ const NPCS = {
 const ITEM_DESC = {
   'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
   "Hed's gift":         "A small wrapped box, taped a little too carefully. Needs to get to the post office.",
+  'old magneto':        "A dense, greasy chunk of metal and copper wire. No idea what it's for, but it feels like it was built to last, and somebody clearly cared about it once.",
+  'jar of moonshine':   "A mason jar sealed with wax. Earl's, meant for Rosario specifically. Best not to open it yourself.",
   'envelope':           'A plain envelope. Good for mailing small amounts of cash to people you owe.',
   'kevlar vest':        'A real kevlar vest, secondhand but functional. Not going to stop everything, but it helps.',
   'kevlar helmet':      "A kevlar helmet. Won't stop much force, but it's amazing what a little deflection does to a bullet's day.",
@@ -1912,6 +1914,8 @@ const ITEM_VALUES = {
   'cheap watch':        12,
   'phone':              0,   // story item, not sellable — you need this
   "Hed's gift":         0,   // not sellable, obviously
+  'old magneto':        5,   // most people wouldn't know what this is worth
+  'jar of moonshine':   2,   // quest item — meant for Rosario specifically, not a real resale good
   'envelope':           1,
   'kevlar vest':        65,
   'kevlar helmet':      55,
@@ -1996,7 +2000,7 @@ const ITEM_SIZE = {
   'small box of buckshot': 'small', 'large box of buckshot': 'small', 'small box of slugs': 'small', 'large box of slugs': 'small',
   'small box of 9mm AP': 'small', 'large box of 9mm AP': 'small',
   'loose 9mm round': 'small', 'loose 9mm AP round': 'small', 'loose buckshot shell': 'small', 'loose slug': 'small',
-  "Hed's gift": 'small',
+  "Hed's gift": 'small', 'old magneto': 'medium', 'jar of moonshine': 'small',
   'weed': 'small', 'stimulants': 'small', 'fentanyl': 'small',
   'pocket knife': 'small', 'flask': 'small', 'cheap watch': 'small',
   'phone': 'small', 'envelope': 'small',
@@ -2302,6 +2306,7 @@ const NPC_SHOPS = {
       { item: 'paperback',    price: 2, randomChance: 0.6 },
     ],
     buys: true,
+    pawnDiscount: 0.5, // casual buyer, not a real pawn shop — still pays meaningfully less than face value
     greet: () => `Doris opens the door. "Oh, you need something? Of course, honey. What've you got?"`,
     cold: () => `Doris looks at you through the crack of the door. "I don't really know you well enough for that, dear."`,
   },
@@ -2315,6 +2320,7 @@ const NPC_SHOPS = {
       { item: 'cheap watch',  price: 12, randomChance: 0.3 },
     ],
     buys: true,
+    pawnDiscount: 0.5,
     greet: () => `Raymond pats his pockets. "Yeah, I might have a few things. What are you working with?"`,
     cold: () => `Raymond shrugs. "I don't really know you yet, man. Come back once we've talked."`,
   },
@@ -2445,9 +2451,10 @@ const NPC_SHOPS = {
     type: 'friendly',
     relationFlag: 'bikeOffered',
     sells: [
-      { item: 'old jacket',    price: 5, randomChance: 0.4 },
+      { item: 'old jacket',    price: 7, randomChance: 0.4 },
     ],
     buys: true,
+    pawnDiscount: 0.5,
     greet: () => `Hector wipes his hands. "Parts?" he says.`,
     cold: () => `Hector looks at you. "Come back when we know each other better."`,
   },
@@ -2459,6 +2466,7 @@ const NPC_SHOPS = {
       { item: 'moonshine', price: 6 },
     ],
     buys: true,
+    pawnDiscount: 0.5,
     greet: () => `Earl wipes his hands on his jeans. "What do you need."`,
     cold: () => `"Don't know you well enough for that," Earl says.`,
   },
@@ -3405,6 +3413,7 @@ function printRoom(key, force=false) {
   checkDebtCollectionCall();
   checkDebtLateness();
   checkHitmanRecurrence();
+  checkDiscreetClient();
 
   if (force || room.firstVisit) {
     // (kept for compatibility — firstVisit still gates one-time triggers below)
@@ -6733,6 +6742,24 @@ function handleKnock() {
     ]);
   } else if (!G.flags.ateSoup) {
     print(`Doris is still inside. "Soup's still warm," she calls.`);
+  } else if (!G.flags.dorisMagnetoOffered) {
+    G.flags.dorisMagnetoOffered = true;
+    logEvt('flag', 'dorisMagnetoOffered', true);
+    print(`Doris waves you in for a second. "Actually — while you're here." She digs through a closet. "Harold kept all sorts of things I never understood. Engine parts, tools, I don't know. Heavy as anything." She holds out a greasy, dense metal object.`);
+    print(`"You want it? Five dollars and it's out of my closet. I don't even know what it is."`);
+    openDialogue('doris', `She's still holding it out, waiting.`, [
+      { label: "Buy it for $5", action: () => {
+        const cash = playerCashTotal();
+        if (cash < 5) { print(`You don't have $5 on you.`); return; }
+        spendCash(5);
+        G.inventory.push('old magneto');
+        logEvt('inventory_add', 'old magneto');
+        print(`She hands it over, visibly relieved to have it out of the house. "Thank you, honey. One less thing."`);
+        updateStatus();
+        closeDialogue();
+      }},
+      { label: "Pass", action: () => { print(`"Suit yourself," Doris says, and sets it back in the closet.`); closeDialogue(); } },
+    ]);
   } else {
     print(`Doris waves from her doorway. "Come back anytime, hon."`);
   }
@@ -7126,8 +7153,9 @@ function talkRaymond() {
   ]);
 }
 
-// Busking / panhandling — no cooldown needed since the time cost self-limits
-// how often it's worth doing. Small random payout, some flavor variety.
+// Busking / panhandling — capped per zone per day (2 max). The time cost
+// alone wasn't actually limiting anything; a player could spam this across
+// a single day and rack up real money for free.
 const BUSK_LOCATIONS = ['downtown', 'district'];
 const BUSK_FLAVOR = [
   { line: `You find a spot and just start talking. Some people actually stop.`, mult: 1.0 },
@@ -7136,11 +7164,27 @@ const BUSK_FLAVOR = [
   { line: `You tell a stranger a genuinely good story for free, and they insist on paying you anyway.`, mult: 1.1 },
   { line: `Nobody's really in the mood today. You still make a little.`, mult: 0.6 },
 ];
+const BUSK_DAILY_CAP = 2;
 function cmdBusk() {
   if (!BUSK_LOCATIONS.includes(G.location)) {
     print(`Not really a spot for it. Downtown or the district would get more foot traffic.`);
     return;
   }
+  const today = Math.floor(G.gameMinutes / 1440);
+  const dayKey = `busk_${G.location}_day`;
+  const countKey = `busk_${G.location}_count`;
+  if (G.flags[dayKey] !== today) {
+    G.flags[dayKey] = today;
+    G.flags[countKey] = 0;
+    logEvt('flag', dayKey, today);
+  }
+  if ((G.flags[countKey] || 0) >= BUSK_DAILY_CAP) {
+    print(`You've already worked this spot enough for today. Same faces have seen you twice already — time to let it rest, or try somewhere else.`);
+    return;
+  }
+  G.flags[countKey] = (G.flags[countKey] || 0) + 1;
+  logEvt('flag', countKey, G.flags[countKey]);
+
   const pick = BUSK_FLAVOR[Math.floor(Math.random() * BUSK_FLAVOR.length)];
   advanceTime(2 * 60 + Math.floor(Math.random() * 60)); // 2-3 hours
   const base = 4 + Math.floor(Math.random() * 10); // $4-13 base
@@ -7150,6 +7194,42 @@ function cmdBusk() {
   receiveCash(payout);
   updateStatus();
 }
+
+// A specific, capped need-based "premium buy" — not a price differential, a
+// character who needs exactly one specific thing right now and pays well for
+// the discretion of getting it without a trip to the store. Self-limiting:
+// random chance, once per day max, and you still have to keep restocking
+// condoms elsewhere to repeat it, so it's a small errand, not a loop.
+function checkDiscreetClient() {
+  if (G.location !== 'speakeasy') return;
+  if (!G.inventory.includes('condom')) return;
+  const today = Math.floor(G.gameMinutes / 1440);
+  if (G.flags.discreetClientDay === today) return;
+  if (dialogueSession || combatState || G.gameOver) return;
+  if (Math.random() > 0.25) return;
+  G.flags.discreetClientDay = today;
+  logEvt('flag', 'discreetClientDay', today);
+  printBlank();
+  print(`A man in an expensive coat sidles up, not quite making eye contact. "This is embarrassing, but I seem to have miscalculated my evening." He glances around the room like the walls might be listening. "Would you happen to be carrying, ah — protection? I'd make it worth your while. Discretion, you understand."`, 'narration');
+  openDialogue('discreet_client', `He's waiting, trying very hard to look like he isn't.`, [
+    { label: "Sell him the condom for $15", action: () => {
+      const idx = G.inventory.indexOf('condom');
+      if (idx === -1) { print(`You don't actually have one anymore.`); closeDialogue(); return; }
+      G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', 'condom');
+      receiveCash(15);
+      print(`He presses the money into your hand fast, like he's worried someone will notice the transaction more than its subject. "Much obliged." He's already walking away.`);
+      updateStatus();
+      closeDialogue();
+    }},
+    { label: "Tell him you don't have one", action: () => {
+      print(`"Ah. Unfortunate." He drifts off, disappointed but discreet about that too.`);
+      closeDialogue();
+    }},
+  ]);
+}
+
+// Odd jobs — small, repeatable, once per in-game day per employer. Deliberately
 // modest money; the point is reliable small income between bigger quests, not
 // a grind-to-riches loop.
 function tryOddJob(jobKey, npcLine, payout, hoursCost) {
@@ -7284,6 +7364,26 @@ function talkRosario() {
     { label: "Buy a drink", action: () => { cmdBarter('rosario'); } },
   ];
 
+  if (G.inventory.includes('jar of moonshine')) {
+    const ready = !G.flags.moonshineJarReadyAt || G.gameMinutes >= G.flags.moonshineJarReadyAt;
+    if (ready) {
+      opts.push({ label: "Deliver the jar of moonshine", action: () => {
+        const idx = G.inventory.indexOf('jar of moonshine');
+        G.inventory.splice(idx, 1);
+        logEvt('inventory_remove', 'jar of moonshine');
+        print(`Rosario checks it's sealed, sniffs it anyway, and slides it under the bar. "Tell Earl he's still got the touch." He pays you out of the register, not from a tab.`);
+        receiveCash(25);
+        G.flags.moonshineJobCooldownDay = Math.floor(G.gameMinutes / 1440) + 3;
+        logEvt('flag', 'moonshineJobCooldownDay', G.flags.moonshineJobCooldownDay);
+        updateStatus();
+      }});
+    } else {
+      opts.push({ label: "Try to deliver the jar early", action: () => {
+        print(`"Not yet," Rosario says, not even looking at it. "Told you, I'm not set up for it today. Come back."`);
+      }});
+    }
+  }
+
   // Debt tip only if player has some rapport and mission is active or Dale has been seen
   if (hasRapport && (G.flags.policeMissionActive === 'arrest' || G.flags.arrestTargetFound === false)) {
     opts.push({
@@ -7360,7 +7460,7 @@ function talkEarl() {
     : G.location === 'moonshiner_camp'
       ? `Earl looks up from the still. "Hey," he says.`
       : `Earl is outside his trailer looking at something in the middle distance. "Hey," he says.`;
-  openDialogue('earl', greeting, [
+  const options = [
     { label: "Ask what he does", action: () => {
       if (G.flags.metEarl) {
         G.flags.earlIntro = true;
@@ -7385,7 +7485,40 @@ function talkEarl() {
       adjustKarma(-2);
       logEvt('karma', G.karma);
     }},
-  ]);
+  ];
+
+  if (G.inventory.includes('old magneto') && !G.flags.magnetoSold) {
+    options.push({ label: "Show him the old magneto", action: () => {
+      print(`Earl takes one look and goes quiet for a second. Turns it over in his hands.`);
+      print(`"Where the hell'd you get this?" He doesn't wait for an answer. "This is a good one. Old, but good — the kind that actually holds a charge. I been running the still off a busted one for two years."`);
+      print(`He digs into his pocket without being asked. "Thirty bucks. Don't tell Doris what it's worth, she'll never let it go."`);
+      const idx = G.inventory.indexOf('old magneto');
+      G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', 'old magneto');
+      receiveCash(30);
+      G.flags.magnetoSold = true;
+      logEvt('flag', 'magnetoSold', true);
+      updateStatus();
+    }});
+  }
+
+  if (G.flags.earlRelationship && !G.inventory.includes('jar of moonshine')) {
+    const today = Math.floor(G.gameMinutes / 1440);
+    const ready = (G.flags.moonshineJobCooldownDay === undefined) || today >= G.flags.moonshineJobCooldownDay;
+    if (ready) {
+      options.push({ label: "Ask if he needs a delivery run", action: () => {
+        print(`Earl looks you over, then shrugs like he's decided something. "Actually — yeah. Got a jar somebody's expecting." He hands you a jar, sealed with wax like it means business.`);
+        print(`"Rosario, at the bar. He'll want it, but not today — he's not set up for it yet. Give it a day."`);
+        G.inventory.push('jar of moonshine');
+        logEvt('inventory_add', 'jar of moonshine');
+        G.flags.moonshineJarReadyAt = G.gameMinutes + 24 * 60;
+        logEvt('flag', 'moonshineJarReadyAt', G.flags.moonshineJarReadyAt);
+        updateStatus();
+      }});
+    }
+  }
+
+  openDialogue('earl', greeting, options);
 }
 
 function talkCuz() {
@@ -15018,9 +15151,15 @@ function refreshContextButtons() {
       G.inventory.includes('envelope') && playerCashTotal() >= 10) {
     buttons.push({ label: 'mail payment', cmd: 'mail payment' });
   }
-  // Busk — downtown or district, always available (time cost self-limits it)
+  // Busk — downtown or district, capped per zone per day
   if (BUSK_LOCATIONS.includes(G.location)) {
-    buttons.push({ label: 'busk', cmd: 'busk' });
+    const today = Math.floor(G.gameMinutes / 1440);
+    const dayKey = `busk_${G.location}_day`;
+    const countKey = `busk_${G.location}_count`;
+    const usedToday = G.flags[dayKey] === today ? (G.flags[countKey] || 0) : 0;
+    if (usedToday < BUSK_DAILY_CAP) {
+      buttons.push({ label: 'busk', cmd: 'busk' });
+    }
   }
   // Recycle — at the drop-off, holding something it takes
   if (G.location === 'recycling_plant' && Object.keys(RECYCLABLE_ITEMS).some(i => G.inventory.includes(i))) {
