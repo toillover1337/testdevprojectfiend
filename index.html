@@ -602,7 +602,7 @@ function getMoveCost(fromKey, destKey) {
                     'schoolhouse','park','petting_zoo','park_lake','church','nightclub','fenix_alley'];
   const sticks   = ['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
                     'sneeds','cult_camp','reservoir',
-                    'body_location','creek','woods_lake'];
+                    'body_location','creek','woods_lake','recycling_plant'];
 
   const fromDowntown = downtown.includes(fromKey);
   const destDowntown = downtown.includes(destKey);
@@ -759,6 +759,8 @@ const VERBS = {
   barter:    ['barter','trade','shop','buy from','sell to','exchange'],
   bus:       ['ride bus','ride the bus','catch bus','bus to','board bus','get on bus'],
   fish:      ['fish','cast','cast line','go fishing','fish here','drop a line','fish with rod'],
+  recycle:   ['recycle','turn in cans','turn in recyclables','feed machine','cash in cans'],
+  busk:      ['busk','panhandle','beg','busk for money','play music','sing for money'],
   watch:     ['check watch','look at watch','what time','what time is it','time','check time'],
   reload:    ['reload','reload gun','reload weapon','rack slide','load gun'],
   equip:     ['equip','wield','switch to','switch weapon','draw','ready','wear','put on'],
@@ -1319,10 +1321,21 @@ ${trashBinDesc('fenix_alley')}`;
     firstVisit: true, safeSleep: false, safeBathroom: false,
     desc: () => `The outskirts of Los Ciegos. Dust, scrub, and the kind of quiet that reminds you the town is small and the desert is large.
 From here you can reach: the auto shop, the trailer park, Sneed's Feed and Seed, the woods,
-and the reservoir further out.
+the reservoir further out, and a recycling drop-off around back of a fenced lot.
 The street is back the way you came.
 ${trashBinDesc('sticks')}`,
-    exits: { auto_shop: 'auto_shop', trailer_park: 'trailer_park', sneeds: 'sneeds', woods: 'woods', reservoir: 'reservoir' },
+    exits: { auto_shop: 'auto_shop', trailer_park: 'trailer_park', sneeds: 'sneeds', woods: 'woods', reservoir: 'reservoir', recycling: 'recycling_plant' },
+    items: [], npcs: [],
+  },
+
+  recycling_plant: {
+    name: "LOS CIEGOS RECYCLING DROP-OFF",
+    firstVisit: true, safeSleep: false, safeBathroom: false,
+    desc: () => `A fenced lot with a rusted bottle-and-can machine bolted to a concrete pad. A hand-painted
+sign lists what it takes: cans, bottles, glass, scrap metal. No attendant — just a slot, a counter
+display, and a coin tray that rattles when it pays out. Somebody clearly still services it, since it works.
+The sticks are back the way you came.`,
+    exits: { sticks: 'sticks', out: 'sticks' },
     items: [], npcs: [],
   },
 
@@ -1441,7 +1454,7 @@ ${G.flags.ghostQuestStarted ? 'The paranormal investigator is here with equipmen
 not alarming exactly, just wrong in a way you notice and stop noticing.
 The dump site is visible through the chain-link fence to the east.
 ${G.flags.metJeremy >= 3 ? 'Jeremy is here. He has been here for a while.' : ''}`,
-    exits: {}, items: [], npcs: [],
+    exits: {}, items: [], npcs: ['jeremy'],
   },
 
   // ── PARK ADDITIONS ─────────────────────────
@@ -1451,7 +1464,7 @@ ${G.flags.metJeremy >= 3 ? 'Jeremy is here. He has been here for a while.' : ''}
     desc: () => `A small lake at the edge of the community park. Ducks. A bench.
 ${G.flags.hasRod ? 'You have your fishing rod.' : 'The water looks fishable.'}
 ${G.flags.metJeremy >= 1 ? 'Jeremy is usually here this time of day.' : ''}`,
-    exits: { out: 'park' }, items: [], npcs: [],
+    exits: { out: 'park' }, items: [], npcs: ['jeremy'],
   },
 
   petting_zoo: {
@@ -1480,7 +1493,7 @@ The teenage attendant takes his job with a seriousness that is almost moving.`;
     desc: () => `A creek running through the woods. Narrow enough to step across in most
 places. Wider and deeper in one spot where the bank cuts in. The water is clear.
 ${G.flags.hasRod ? 'You have your fishing rod.' : 'Something moves under the surface.'}`,
-    exits: { out: 'woods' }, items: [], npcs: [],
+    exits: { out: 'woods' }, items: [], npcs: ['jeremy'],
   },
 
   woods_lake: {
@@ -1489,7 +1502,7 @@ ${G.flags.hasRod ? 'You have your fishing rod.' : 'Something moves under the sur
     desc: () => `A lake in the woods fed by underground springs. Darker than the park lake.
 Quieter. No ducks here. The water is cold even in summer.
 ${G.flags.hasRod ? 'You have your fishing rod.' : 'Something in the water moves differently than fish should.'}`,
-    exits: { out: 'woods' }, items: [], npcs: [],
+    exits: { out: 'woods' }, items: [], npcs: ['jeremy'],
   },
 
   // ── CEMETERY ───────────────────────────────
@@ -1510,7 +1523,8 @@ ${G.flags.communeFlag ? 'Somewhere in the future there will be a stone here with
 should be open right now. It is not open. It has not been open in recent memory.
 Mail still arrives in Los Ciegos. Nobody investigates this too hard.
 ${G.flags.anonNetUnlocked ? 'Packages from AnonNet appear at your apartment on their own schedule.' : ''}
-${G.flags.debtPaymentPlan && G.flags.clinicDebt > 0 ? 'There\'s still an outgoing mail slot around the side. "mail payment" would get an envelope out, if you had one and the cash.' : ''}`,
+${G.flags.debtPaymentPlan && G.flags.clinicDebt > 0 ? 'There\'s still an outgoing mail slot around the side. "mail payment" would get an envelope out, if you had one and the cash.' : ''}
+${G.inventory.includes("Hed's gift") ? 'There\'s an outgoing mail slot around the side — "mail gift" would take care of that little wrapped box.' : ''}`,
     exits: {}, items: [], npcs: [],
   },
 
@@ -1749,6 +1763,7 @@ const NPCS = {
 // ═══════════════════════════════════════════════
 const ITEM_DESC = {
   'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
+  "Hed's gift":         "A small wrapped box, taped a little too carefully. Needs to get to the post office.",
   'envelope':           'A plain envelope. Good for mailing small amounts of cash to people you owe.',
   'kevlar vest':        'A real kevlar vest, secondhand but functional. Not going to stop everything, but it helps.',
   'kevlar helmet':      "A kevlar helmet. Won't stop much force, but it's amazing what a little deflection does to a bullet's day.",
@@ -1896,6 +1911,7 @@ const ITEM_VALUES = {
   'flask':              8,
   'cheap watch':        12,
   'phone':              0,   // story item, not sellable — you need this
+  "Hed's gift":         0,   // not sellable, obviously
   'envelope':           1,
   'kevlar vest':        65,
   'kevlar helmet':      55,
@@ -1980,6 +1996,7 @@ const ITEM_SIZE = {
   'small box of buckshot': 'small', 'large box of buckshot': 'small', 'small box of slugs': 'small', 'large box of slugs': 'small',
   'small box of 9mm AP': 'small', 'large box of 9mm AP': 'small',
   'loose 9mm round': 'small', 'loose 9mm AP round': 'small', 'loose buckshot shell': 'small', 'loose slug': 'small',
+  "Hed's gift": 'small',
   'weed': 'small', 'stimulants': 'small', 'fentanyl': 'small',
   'pocket knife': 'small', 'flask': 'small', 'cheap watch': 'small',
   'phone': 'small', 'envelope': 'small',
@@ -2829,7 +2846,8 @@ function doSteal(itemName) {
     print(`${NPCS[npcKey]?.name || 'They'} saw that.`, 'failure');
     sourNPC(npcKey, `Word travels fast in a town this size.`);
     // Heat still rises — word reaches the department eventually in a town this small
-    G.policeHeat = Math.min(90, G.policeHeat + 15);
+    const hd3 = G.flags.hedFavorDone ? 0.8 : 1.0;
+    G.policeHeat = Math.min(90, G.policeHeat + Math.round(15 * hd3));
     logEvt('heat', G.policeHeat);
     barterSession = null;
     return;
@@ -3648,7 +3666,8 @@ function illegalAct(description, heatGain=10) {
   const violentCrime = ['homicide','assault','assault on officer'].includes(description);
   if (trulyPrivate && !violentCrime && description !== 'passed out in public') return false;
 
-  G.policeHeat = Math.min(90, G.policeHeat + heatGain);
+  const heatDiscount = G.flags.hedFavorDone ? 0.8 : 1.0; // permanent 20% reduction, earned via Hed's personal favor
+  G.policeHeat = Math.min(90, G.policeHeat + Math.round(heatGain * heatDiscount));
   logEvt('heat', G.policeHeat);
   const roll = Math.random() * 100;
   if (roll < G.policeHeat) {
@@ -3993,7 +4012,8 @@ function applyWitnessReaction(roomKey, suppressed, crimeDescription) {
       }
     }
     if (heatGain > 0) {
-      G.policeHeat = Math.min(90, G.policeHeat + heatGain);
+      const hd = G.flags.hedFavorDone ? 0.8 : 1.0;
+      G.policeHeat = Math.min(90, G.policeHeat + Math.round(heatGain * hd));
       logEvt('heat', G.policeHeat);
     }
   }
@@ -5072,6 +5092,8 @@ function handleCommand(raw) {
     case 'barter':    return cmdBarter(obj);
     case 'bus':       return cmdTakeBus(obj);
     case 'fish':      return cmdFish();
+    case 'recycle':   return cmdRecycle();
+    case 'busk':      return cmdBusk();
     case 'watch':     return cmdCheckWatch();
     case 'reload':    return cmdReload(obj);
     case 'equip':      return cmdEquip(obj);
@@ -5119,6 +5141,11 @@ function interceptSpecial(raw) {
   // Debt collection — mailing a $10 payment from the post office
   if (r.includes('mail payment') && G.location === 'post_office_exterior') {
     mailDebtPayment(); return true;
+  }
+
+  // Hed's personal favor — mailing his kid's birthday gift
+  if ((r.includes('mail gift') || r.includes('mail the gift')) && G.location === 'post_office_exterior') {
+    mailHedGift(); return true;
   }
 
   // Knock — route based on location
@@ -7099,12 +7126,56 @@ function talkRaymond() {
   ]);
 }
 
+// Busking / panhandling — no cooldown needed since the time cost self-limits
+// how often it's worth doing. Small random payout, some flavor variety.
+const BUSK_LOCATIONS = ['downtown', 'district'];
+const BUSK_FLAVOR = [
+  { line: `You find a spot and just start talking. Some people actually stop.`, mult: 1.0 },
+  { line: `You sing something half-remembered. It's not good. A few people pay you to stop, technically.`, mult: 1.0 },
+  { line: `You just sit with a sign. It's not glamorous, but people are generous when they're in a hurry to look away.`, mult: 0.9 },
+  { line: `You tell a stranger a genuinely good story for free, and they insist on paying you anyway.`, mult: 1.1 },
+  { line: `Nobody's really in the mood today. You still make a little.`, mult: 0.6 },
+];
+function cmdBusk() {
+  if (!BUSK_LOCATIONS.includes(G.location)) {
+    print(`Not really a spot for it. Downtown or the district would get more foot traffic.`);
+    return;
+  }
+  const pick = BUSK_FLAVOR[Math.floor(Math.random() * BUSK_FLAVOR.length)];
+  advanceTime(2 * 60 + Math.floor(Math.random() * 60)); // 2-3 hours
+  const base = 4 + Math.floor(Math.random() * 10); // $4-13 base
+  const payout = Math.max(1, Math.round(base * pick.mult));
+  print(pick.line);
+  print(`You made $${payout}.`, 'special');
+  receiveCash(payout);
+  updateStatus();
+}
+// modest money; the point is reliable small income between bigger quests, not
+// a grind-to-riches loop.
+function tryOddJob(jobKey, npcLine, payout, hoursCost) {
+  const today = Math.floor(G.gameMinutes / 1440);
+  const lastDay = G.flags[`oddJob_${jobKey}_day`];
+  if (lastDay === today) {
+    print(`Already helped out today. Come back tomorrow.`);
+    return;
+  }
+  G.flags[`oddJob_${jobKey}_day`] = today;
+  logEvt('flag', `oddJob_${jobKey}_day`, today);
+  advanceTime(hoursCost * 60);
+  print(npcLine);
+  receiveCash(payout);
+  updateStatus();
+}
+
 function talkMarcus() {
   const greeting = `Marcus puts his phone face-down with the energy of someone deeply opposed to commerce. "Yeah. What."`;
 
   openDialogue('marcus', greeting, [
     { label: "Browse the store", action: () => { closeDialogue(); cmdBarter('marcus'); } },
     { label: "Ask about the town", action: () => print(`"I live here," Marcus says. "I don't know why." He picks up his phone again.`) },
+    { label: "Ask if he needs help restocking", action: () => {
+      tryOddJob('marcus', `Marcus points you at the cooler without looking up. You spend a while hauling cases and rotating stock. "Yeah, that's good," he says eventually, and hands over some cash without really looking at it either.`, 8, 1);
+    }},
     { label: "Redeem a scratch ticket", action: () => {
       const t = G.inventory.find(i=>i.startsWith('winning ticket'));
       if (t) { closeDialogue(); barterSession={npcKey:'marcus',shop:NPC_SHOPS.marcus}; redeemTicketAtMarcus(); barterSession=null; }
@@ -7148,6 +7219,9 @@ function talkHector() {
     }},
     { label: "Ask about Los Ciegos", action: () => print(`"Fixed every car in this town twice," Hector says. "Know more about people than they know I know." He leaves it there.`) },
     { label: "Ask how long he's been here", action: () => print(`"Born here," Hector says. "Stayed here." A pause. "It's a good place to work. Quiet."`) },
+    { label: "Ask if he needs an extra pair of hands", action: () => {
+      tryOddJob('hector', `Hector puts you to work holding things and handing him tools for a while. "Alright, that's enough," he says eventually, wiping his hands on the rag. He pays you out of his own pocket, not the register.`, 12, 1.5);
+    }},
   ];
 
   openDialogue('hector', greeting, opts);
@@ -7193,6 +7267,9 @@ function talkSneed() {
       } else {
         print(`"You already got one," Sneed says. He notices things.`);
       }
+    }},
+    { label: "Ask if he needs help unloading stock", action: () => {
+      tryOddJob('sneed', `Sneed points you toward a truck out back without much enthusiasm. You spend a while hauling boxes in. "That's enough," he says, and pays you from a coffee can under the counter.`, 10, 1);
     }},
   ]);
 }
@@ -10268,7 +10345,8 @@ async function combatEnd(result) {
       // Gunshots — someone may have heard. Small ambient heat if not already at critical.
       // Shotguns are especially loud; no suppressor option exists for them.
       if (G.policeHeat < 60) {
-        G.policeHeat = Math.min(60, G.policeHeat + (isShotgun(pw) ? 8 : 5));
+        const hd2 = G.flags.hedFavorDone ? 0.8 : 1.0;
+        G.policeHeat = Math.min(60, G.policeHeat + Math.round((isShotgun(pw) ? 8 : 5) * hd2));
         logEvt('heat', G.policeHeat);
       }
     }
@@ -10411,6 +10489,19 @@ function runDebtCollectionCall() {
       closeDialogue();
     }},
   ]);
+}
+
+function mailHedGift() {
+  if (!G.inventory.includes("Hed's gift")) { print(`You don't have anything to mail here.`); return; }
+  const idx = G.inventory.indexOf("Hed's gift");
+  G.inventory.splice(idx, 1);
+  logEvt('inventory_remove', "Hed's gift");
+  G.flags.hedGiftMailed = true;
+  G.flags.hedFavorDueAt = G.gameMinutes + 2 * 24 * 60; // a couple days for word to come back
+  logEvt('flag', 'hedGiftMailed', true);
+  logEvt('flag', 'hedFavorDueAt', G.flags.hedFavorDueAt);
+  print(`You drop the little wrapped box in the outgoing mail slot. No return address on it, but it's addressed careful, like whoever wrote it thought about it a while.`);
+  updateStatus();
 }
 
 function mailDebtPayment() {
@@ -12005,6 +12096,45 @@ function talkSheriff() {
       else print(`"You? Nah." He waves his sandwich. "You got that look of somebody who's thinking about it though."`)
     }},
   ];
+
+  // Personal favor — unrelated to police work, unlocks once you've been around
+  // a while. Reward is a permanent, quiet discount on police heat gains.
+  if ((G.flags.policeTier || 0) >= 3 && !G.flags.hedFavorDone) {
+    if (!G.flags.hedFavorOffered) {
+      opts.push({ label: "Ask if he's doing okay", action: () => {
+        G.flags.hedFavorOffered = true;
+        logEvt('flag', 'hedFavorOffered', true);
+        print(`Hed doesn't answer right away. Sets the sandwich down, which is how you know it's serious.`);
+        print(`"Got a kid," he says. "Out of town, with her mother. We don't — " he stops, restarts. "It's complicated. Point is, her birthday's coming up and I got her something, and it's sat on my desk for two weeks because I keep not getting around to mailing it."`);
+        print(`He pushes a small wrapped box across the desk. "You mind? Post office, whenever you're headed that way. Not a big thing. Just — don't want to be the reason she thinks I forgot."`);
+        G.inventory.push("Hed's gift");
+        logEvt('inventory_add', "Hed's gift");
+        updateStatus();
+      }});
+    } else if (G.inventory.includes("Hed's gift")) {
+      opts.push({ label: "Tell him you'll take care of it", action: () => {
+        print(`"Appreciate it," Hed says, and goes back to the sandwich like the conversation didn't happen. That's as close to thank you as you're getting.`);
+      }});
+    } else if (G.flags.hedGiftMailed && !G.flags.hedFavorReported) {
+      const ready = !G.flags.hedFavorDueAt || G.gameMinutes >= G.flags.hedFavorDueAt;
+      if (ready) {
+        opts.push({ label: "Ask if he's heard anything", action: () => {
+          G.flags.hedFavorReported = true;
+          G.flags.hedFavorDone = true;
+          logEvt('flag', 'hedFavorReported', true);
+          logEvt('flag', 'hedFavorDone', true);
+          print(`Hed doesn't look up right away. "She called," he says, finally. "First time in a while. Said thanks. Talked for a bit." He clears his throat, which is as much emotion as he's willing to spend out loud.`);
+          print(`"Anyway." He waves it off, but he's not quite done — he glances at you again. "You're alright, you know that? Don't let it go to your head."`);
+          printBlank();
+          print(`Word gets around that you're not the worst thing walking around this town. Doesn't erase anything, but people go a little easier on you from here on out.`, 'special');
+        }});
+      } else {
+        opts.push({ label: "Ask if he's heard anything", action: () => {
+          print(`"Nah, not yet," Hed says. "Give it time. These things take time."`);
+        }});
+      }
+    }
+  }
 
   // Police route — mission offer slots in based on current tier
   const policeOpts = getPoliceRouteOption();
@@ -13715,6 +13845,47 @@ function printBodiesInRoom() {
   }
 }
 
+// Recycling — a sink for the genuinely worthless trash-loot items. Modest
+// per-item payout on purpose; the point is rewarding accumulated rummaging
+// across many stops, not being a fast way to make money on its own.
+const RECYCLABLE_ITEMS = {
+  'crumpled can': 1.00,
+  'tin can':      0.75,
+  'soup can':     0.75,
+  'bottle cap':   0.25,
+  'glass shard':  0.50,
+  'bent spoon':   0.50,
+  'old receipt':  0.10,
+};
+
+function cmdRecycle() {
+  if (G.location !== 'recycling_plant') {
+    print(`There's nothing to recycle here.`); return;
+  }
+  const held = Object.keys(RECYCLABLE_ITEMS).filter(i => G.inventory.includes(i));
+  if (!held.length) {
+    print(`You don't have anything this thing takes. Cans, bottles, glass, scrap — that's it.`);
+    return;
+  }
+
+  let total = 0;
+  const summary = [];
+  for (const item of held) {
+    const count = G.inventory.filter(i => i === item).length;
+    const rate = RECYCLABLE_ITEMS[item];
+    const payout = Math.round(count * rate * 100) / 100;
+    total += payout;
+    summary.push(`${count} ${item}${count===1?'':'s'}`);
+    G.inventory = G.inventory.filter(i => i !== item);
+    for (let k = 0; k < count; k++) logEvt('inventory_remove', item);
+  }
+  const wholeTotal = Math.round(total);
+  print(`You feed it all in: ${summary.join(', ')}. The machine clicks through its count.`);
+  print(`The coin tray rattles. $${wholeTotal}.`, 'special');
+  receiveCash(wholeTotal);
+  updateStatus();
+}
+
 function cmdSearchBody(obj) {
   if (G.flags.policeProcedureRoom === G.location) {
     print(`As much as you might want to, there's police procedure to worry about. Not now.`);
@@ -14509,7 +14680,7 @@ const EXIT_CATEGORY = {
   diner: 'shop', gas_station: 'shop', pawn_shop: 'shop', bar: 'shop',
   pharmacy: 'shop', laundromat: 'shop', motel: 'shop', alley: 'shop',
   auto_shop: 'shop', sneeds: 'shop', trailer_park: 'shop', moonshiner_camp: 'shop',
-  woods: 'shop', reservoir: 'shop', cult_camp: 'shop', homeless_camp: 'shop',
+  woods: 'shop', reservoir: 'shop', cult_camp: 'shop', homeless_camp: 'shop', recycling_plant: 'shop',
   apartment: 'hub', hallway: 'hub',
   downtown: 'hub', district: 'hub', sticks: 'hub',
   bus_stop_downtown: 'hub', bus_stop_district: 'hub', bus_stop_sticks: 'hub',
@@ -14534,7 +14705,7 @@ const EXIT_SHORT_NAME = {
   pawn_shop: 'PAWN SHOP', bar: "ROSARIO'S BAR", pharmacy: 'PHARMACY', laundromat: 'LAUNDROMAT',
   motel: 'MOTEL', alley: 'THE ALLEY', auto_shop: "HECTOR'S AUTO", sneeds: "SNEED'S",
   trailer_park: 'TRAILER PARK', moonshiner_camp: "EARL'S OPERATION", woods: 'THE WOODS',
-  reservoir: 'RESERVOIR', cult_camp: 'CULT COMPOUND', homeless_camp: 'HOMELESS CAMP',
+  reservoir: 'RESERVOIR', cult_camp: 'CULT COMPOUND', homeless_camp: 'HOMELESS CAMP', recycling_plant: 'RECYCLING',
   apartment: 'APARTMENT', hallway: 'HALLWAY', downtown: 'DOWNTOWN', district: 'DISTRICT',
   sticks: 'THE STICKS', bus_stop_downtown: 'BUS STOP', bus_stop_district: 'BUS STOP',
   bus_stop_sticks: 'BUS STOP',
@@ -14561,7 +14732,7 @@ const DEV_GO_ZONES = {
     'clinic_pharmacy','church','na_meeting','cemetery','post_office_exterior','schoolhouse',
     'park','park_lake','petting_zoo','nightclub','fenix_alley','bus_stop_district','homeless_camp'],
   'Sticks': ['sticks','woods','body_location','auto_shop','trailer_park','moonshiner_camp',
-    'sneeds','cult_camp','reservoir','creek','woods_lake','bus_stop_sticks'],
+    'sneeds','cult_camp','reservoir','creek','woods_lake','bus_stop_sticks','recycling_plant'],
 };
 
 // Dev hotbar: devgive items grouped by category. Misc is computed dynamically
@@ -14618,6 +14789,10 @@ function getPresentNpcs(roomKey) {
     }
     if (k === 'alley_dealer' && G.flags.alleyDealerGone) return false;
     if (k === 'dale') return G.flags.daleKilled ? false : (G.flags.daleJailed ? roomKey === 'jail_cells' : roomKey === 'bar');
+    if (k === 'jeremy') {
+      if (roomKey === 'park_lake') return true; // his usual spot — discoverable from the first visit
+      return (G.flags.metJeremy || 0) >= 3;
+    }
     return true;
   });
 }
@@ -14842,6 +15017,18 @@ function refreshContextButtons() {
   if (G.location === 'post_office_exterior' && G.flags.debtPaymentPlan && G.flags.clinicDebt > 0 &&
       G.inventory.includes('envelope') && playerCashTotal() >= 10) {
     buttons.push({ label: 'mail payment', cmd: 'mail payment' });
+  }
+  // Busk — downtown or district, always available (time cost self-limits it)
+  if (BUSK_LOCATIONS.includes(G.location)) {
+    buttons.push({ label: 'busk', cmd: 'busk' });
+  }
+  // Recycle — at the drop-off, holding something it takes
+  if (G.location === 'recycling_plant' && Object.keys(RECYCLABLE_ITEMS).some(i => G.inventory.includes(i))) {
+    buttons.push({ label: 'recycle', cmd: 'recycle' });
+  }
+  // Mail Hed's gift — post office, have the gift on you
+  if (G.location === 'post_office_exterior' && G.inventory.includes("Hed's gift")) {
+    buttons.push({ label: 'mail gift', cmd: 'mail gift' });
   }
   if (G.flags.devMode) {
     buttons.push({ label: 'dev', action: () => { roomMenuMode = 'dev'; refreshContextButtons(); } });
