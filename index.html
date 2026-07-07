@@ -2909,6 +2909,10 @@ function doBuy(itemName) {
   logEvt('inventory_add', entry.item);
   if (isMultiUse(entry.item)) addMultiUseContainer(entry.item);
   print(`You hand over $${entry.price} and take the ${entry.item}.`);
+  if (npcKey === 'alley_dealer') {
+    G.flags.nascarBuyCount = (G.flags.nascarBuyCount || 0) + 1;
+    logEvt('flag', 'nascarBuyCount', G.flags.nascarBuyCount);
+  }
   updateStatus();
   return true;
 }
@@ -10532,6 +10536,7 @@ async function combatEnd(result) {
     checkBustCombatOutcome();
     checkWitnessCombatOutcome();
     checkHitmanCombatOutcome();
+    checkRivalCombatOutcome();
   }
 }
 
@@ -13766,10 +13771,18 @@ function handleAlleyDealer() {
   // If player asks for fentanyl specifically
   if (G.flags.askingForFentanyl) {
     delete G.flags.askingForFentanyl;
-    print(`He shakes his head. "I don't carry that. You want the heavy stuff, find Chuy."
-He tilts his head. "Hendrix Street. Dead end. You didn't hear it from me."`);
-    G.flags.knowsTrapHouse = true;
-    print(`You won't forget the way now.`);
+    if ((G.flags.nascarBuyCount || 0) < 2) {
+      print(`He shakes his head. "Don't have that. Wrong guy."`);
+      return;
+    }
+    if (!G.flags.knowsTrapHouse) {
+      print(`He looks at you for a second longer than usual. "You know what, I like you." A pause. "But nobody's got that right now. New leadership's tightening the flow."`);
+      print(`He tilts his head. "Hendrix Street. Dead end. Ask for Chuy. You didn't hear it from me."`);
+      G.flags.knowsTrapHouse = true;
+      print(`You won't forget the way now.`);
+    } else {
+      print(`"Told you already," he says. "Hendrix Street. Chuy. Go."`);
+    }
     return;
   }
 
@@ -13793,15 +13806,9 @@ function handleChuy() {
   if (!G.flags.knowsTrapHouse) {
     print(`Chuy looks at you with flat eyes. "You got the wrong address."`); return;
   }
+  if (isNpcDead('chuy')) { printNpcDeadLine('chuy'); return; }
 
-  if (!G.flags.metChuy) {
-    G.flags.metChuy = true;
-    print(`Chuy looks at you from the couch. He doesn't move.`);
-    print(`"Nascar sent you?" He doesn't wait. "Sit down. What do you need."`);
-    printBlank();
-  }
-
-  if (G.flags.askingForFentanyl) {
+  if (G.flags.askingForFentanyl && G.flags.chuyTestResolved) {
     delete G.flags.askingForFentanyl;
     G.flags.chuySentFentanyl = true;
     print(`Chuy shakes his head slowly. "I don't touch fentanyl. That's La Señora's business."`);
@@ -13809,11 +13816,219 @@ function handleChuy() {
     print(`He looks back at the TV. Conversation over.`, 'special');
     return;
   }
+  delete G.flags.askingForFentanyl;
 
-  barterSession = { npcKey: 'chuy', shop: NPC_SHOPS.chuy };
-  if (!G.shopStock) buildShopStock();
-  if (!G.shopStock.chuy) G.shopStock.chuy = NPC_SHOPS.chuy.sells;
-  printBarterMenu('chuy', NPC_SHOPS.chuy, G.shopStock.chuy);
+  // First meeting — the sherm stick test. Everything converges on the same
+  // place (trust earned, phone number unlocked) with different flavor.
+  if (!G.flags.metChuy) {
+    G.flags.metChuy = true;
+    print(`Chuy looks at you from the couch. He doesn't move.`);
+    print(`"Nascar sent you?" He doesn't wait. "Sit down. What do you need."`);
+    printBlank();
+    print(`He reaches under a couch cushion and comes up with a glass stem packed with something dark and sticky. He holds it out. Doesn't say anything. Just watches you.`);
+    printBlank();
+    print(`"Before we talk business," he finally says, "you're gonna smoke this. Or you're not a customer. You're a cop." He says it flat. Not a joke, or not obviously one.`, 'special');
+    openDialogue('chuy', null, [
+      { label: "Take the sherm stick and smoke it", action: () => chuyBlackoutScene('immediate') },
+      { label: "Decline", action: () => chuyTestEscalate(1) },
+    ]);
+    return;
+  }
+
+  // Test already resolved (or in progress via dialogue) — normal interaction.
+  if (!G.flags.chuyTestResolved) {
+    print(`Chuy just looks at you. "We were in the middle of something."`);
+    return;
+  }
+
+  handleChuyMain();
+}
+
+// Escalating consequences for declining the sherm stick. Every path ends the
+// same place — trust earned, number unlocked — just with different flavor.
+function chuyTestEscalate(stage) {
+  if (stage === 1) {
+    print(`Chuy's face changes. Not dramatically — just a door closing somewhere behind his eyes.`, 'failure');
+    print(`"You're gonna smoke it," he says again, quieter, which is worse. "Or we got a problem."`, 'failure');
+    openDialogue('chuy', null, [
+      { label: "Take it and smoke it now", action: () => chuyBlackoutScene('caved') },
+      { label: "Decline again", action: () => chuyTestEscalate(2) },
+    ]);
+  } else if (stage === 2) {
+    print(`Chuy sets the stem down slowly. Reaches behind the couch cushion and comes back with a pistol, resting it on his knee, pointed generally at you without any real ceremony.`, 'failure');
+    print(`"Last warning," he says.`, 'failure');
+    openDialogue('chuy', null, [
+      { label: "Take it and smoke it now", action: () => chuyBlackoutScene('caved') },
+      { label: "Decline again", action: () => chuyTestFinalDecline() },
+    ]);
+  }
+}
+
+function chuyTestFinalDecline() {
+  print(`Chuy shrugs, almost bored, and pulls the trigger.`, 'failure');
+  printBlank();
+  print(`Click.`, 'system');
+  printBlank();
+  print(`Nothing. Empty chamber. Chuy starts laughing — a real laugh, surprised out of him.`);
+  print(`"Damn," he says, wiping his eyes. "You've got some cojones for a gringo." He sets the gun down like it was never anything. "Alright. Alright, I respect it. Sit down for real this time."`, 'special');
+  resolveChuyTest('respect');
+}
+
+// Blackout/park scene — plays out identically regardless of whether the
+// player smoked immediately or caved partway through the escalation; only
+// the flavor line differs (handled by resolveChuyTest afterward).
+async function chuyBlackoutScene(pathType) {
+  print(`Chuy hands over the stem and a lighter. "There you go."`);
+  await sleep(600);
+  print(`It hits fast and wrong — heavier than anything you've smoked before. The room tilts.`, 'narration');
+  await sleep(800);
+  print(`...`, 'system');
+  await sleep(900);
+  printBlank();
+  print(`You come to on your back, staring at trees you don't recognize. It's bright out. Too bright.`, 'narration');
+  await sleep(700);
+  print(`You're in the park. You are also, you become aware, not wearing any clothes.`, 'narration');
+  await sleep(700);
+  print(`A woman with a stroller has stopped a safe distance away. "I'm calling the police," she says, in the tone of someone who has already dialed.`, 'failure');
+  await sleep(600);
+  printBlank();
+  print(`You gather what you can find of your dignity, and what you can find of your clothes, and get out of the park before that call gets answered.`, 'narration');
+  illegalAct('public indecency', 15);
+  G.needs.hunger = Math.min(100, G.needs.hunger + 8);
+  G.needs.thirst = Math.min(100, G.needs.thirst + 8);
+  G.needs.craving = Math.max(0, G.needs.craving - 12);
+  updateStatus();
+  printBlank();
+  print(`Your phone buzzes. Unknown number, but it doesn't take long to guess.`, 'system');
+  printBlank();
+  if (pathType === 'immediate') {
+    print(`CHUY: "lmaooo yo you good?? that was funny as fuck. dont got what you want but i might know somebody. gotta put in work first tho, trust dont just happen"`, 'special');
+  } else {
+    print(`CHUY: "bro i genuinely didn't think you'd actually do it 💀 respect tho. dont got what you want but i might know somebody. gotta put in work first tho"`, 'special');
+  }
+  resolveChuyTest(pathType);
+}
+
+function resolveChuyTest(pathType) {
+  G.flags.chuyTestResolved = true;
+  G.flags.chuyTestPath = pathType;
+  G.flags.chuyProloguesUnlocked = true;
+  logEvt('flag', 'chuyTestResolved', true);
+  logEvt('flag', 'chuyProloguesUnlocked', true);
+  printBlank();
+  print(`[ You can now ask Chuy about work. ]`, 'system');
+}
+
+// Normal Chuy interaction once the test is resolved — barter, plus the
+// prologue job ladder that leads to gangTier 1 and La Señora.
+function handleChuyMain() {
+  const opts = [
+    { label: "Buy something", action: () => {
+      barterSession = { npcKey: 'chuy', shop: NPC_SHOPS.chuy };
+      if (!G.shopStock) buildShopStock();
+      if (!G.shopStock.chuy) G.shopStock.chuy = NPC_SHOPS.chuy.sells;
+      printBarterMenu('chuy', NPC_SHOPS.chuy, G.shopStock.chuy);
+    }},
+  ];
+
+  if (!G.flags.chuyJob1Done) {
+    opts.push({ label: "Ask about work", action: () => chuyOfferJob1() });
+  } else if (!G.flags.chuyJob2Done) {
+    opts.push({ label: "Ask about work", action: () => chuyOfferJob2() });
+  } else if (!G.flags.chuyJob3Done && !G.flags.rivalCombatActive) {
+    opts.push({ label: "Ask about work", action: () => chuyOfferJob3() });
+  } else if (G.flags.chuyJob3Done) {
+    opts.push({ label: "Ask about work", action: () => print(`"You're good," Chuy says. "La Señora's expecting you. Don't keep her waiting — that's its own kind of disrespect."`) });
+  }
+
+  openDialogue('chuy', `Chuy nods at you, the way you nod at someone you've decided not to worry about anymore.`, opts);
+}
+
+// ── PROLOGUE JOB 1: drug run to Chuy's clients ──────────────
+function chuyOfferJob1() {
+  print(`"Alright," Chuy says. "Small thing first. See how you move."`);
+  print(`He hands you a paper bag, already packed, and three names — nothing you'd recognize, addresses you half-know from walking past them.`);
+  openDialogue('chuy', null, [
+    { label: "Make the run", action: () => chuyRunJob1() },
+    { label: "Not right now", action: () => print(`"Fine. It'll keep." He puts the bag back under the couch.`) },
+  ]);
+}
+
+async function chuyRunJob1() {
+  print(`You make the rounds. Nobody wants to talk. Nobody wants you lingering. A door cracks open, a hand takes the product, cash changes hands, the door closes. Three times.`, 'narration');
+  await sleep(600);
+  print(`It's mundane in a way that feels worse than if it had been dramatic.`, 'narration');
+  const pay = 40;
+  receiveCash(pay);
+  illegalAct('drug distribution', 8);
+  G.flags.chuyJob1Done = true;
+  logEvt('flag', 'chuyJob1Done', true);
+  printBlank();
+  print(`Back at the trap house, Chuy counts the empty bag's worth without looking inside it — he already knows. "Didn't lose anything, didn't skim anything." He nods, more to himself than to you. Pays you $${pay}.`, 'special');
+  updateStatus();
+}
+
+// ── PROLOGUE JOB 2: gun pickup ────────────────────────────────
+function chuyOfferJob2() {
+  print(`"Next thing," Chuy says. "Package coming in for me and some people I work with. I need a set of hands that isn't mine picking it up."`);
+  openDialogue('chuy', null, [
+    { label: "Make the pickup", action: () => chuyRunJob2() },
+    { label: "Not right now", action: () => print(`"It'll still be there," Chuy says, unbothered.`) },
+  ]);
+}
+
+async function chuyRunJob2() {
+  print(`The address is a storage unit two neighborhoods over. The guy who opens it doesn't introduce himself. He hands over a duffel, heavier than it looks, and says exactly one sentence: "Tell Chuy it's all there."`, 'narration');
+  await sleep(600);
+  print(`You don't open it on the walk back. You don't want to know exactly what "all there" means in numbers.`, 'narration');
+  const pay = 60;
+  receiveCash(pay);
+  illegalAct('weapons trafficking', 12);
+  G.flags.chuyJob2Done = true;
+  logEvt('flag', 'chuyJob2Done', true);
+  printBlank();
+  print(`Chuy takes the duffel without opening it either — a trust thing, apparently, or he already knows exactly what's supposed to be in there. He pays you $${pay}. "You're not as useless as you look," he says. It's the nicest thing he's said to you.`, 'special');
+  updateStatus();
+}
+
+// ── PROLOGUE JOB 3: the rival — culminating job, ends prologue ──
+function chuyOfferJob3() {
+  print(`Chuy doesn't sit up, but something in how he's sitting changes. "Last thing. Bigger thing."`);
+  print(`"Guy named Flaco's been telling people he's about to move product on Hendrix. Not asking anybody. That's not how this works." He looks at you. "Make sure he understands that. However you want to make him understand it — that part's yours. Just make sure he's done."`);
+  openDialogue('chuy', null, [
+    { label: "I'll handle it", action: () => startChuyRivalJob() },
+    { label: "Not right now", action: () => print(`Chuy shrugs. "He's not getting less of a problem while you think about it."`) },
+  ]);
+}
+
+function startChuyRivalJob() {
+  print(`Flaco's exactly where Chuy said he'd be — posted up near the mouth of the alley behind Hendrix Street, like he already owns it.`, 'narration');
+  print(`"The hell do you want," he says, when he clocks you walking up like you mean something by it.`, 'failure');
+  G.flags.rivalCombatActive = true;
+  logEvt('flag', 'rivalCombatActive', true);
+  startMultiCombat([{ name: 'Flaco', weapon: 'pocket knife', hp: 90 }], [], true, false);
+}
+
+function checkRivalCombatOutcome() {
+  if (!G.flags.rivalCombatActive) return;
+  if (combatState) return;
+  G.flags.rivalCombatActive = false;
+  logEvt('flag', 'rivalCombatActive', false);
+  if (G.gameOver) return;
+
+  const killed = !!G.flags['killed_Flaco'];
+  printBlank();
+  if (killed) {
+    print(`Flaco isn't getting up. Word will move fast, and it'll move the way Chuy wants it to.`, 'system');
+  } else {
+    print(`Flaco's on the ground, not moving much, but breathing. He won't be telling anyone he's "about to move product" on Hendrix Street anytime soon. That's the point.`, 'system');
+  }
+  G.flags.chuyJob3Done = true;
+  G.flags.gangTier = 1;
+  logEvt('flag', 'chuyJob3Done', true);
+  logEvt('flag', 'gangTier', 1);
+  printBlank();
+  print(`Back at the trap house, Chuy already seems to know. "Good," is all he says at first. Then: "Alright. You're not just some guy off the street anymore." He pulls out a phone, taps something out. "La Señora's gonna want to meet you. Club Fenix. Don't be stupid about how you dress."`, 'special');
 }
 
 // ═══════════════════════════════════════════════
