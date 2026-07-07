@@ -1110,13 +1110,15 @@ ${G.flags.evidenceLockerRifled
       const occupants = [];
       if (G.flags.earlJailed) occupants.push(`Earl's in one cell, sitting on the bunk with his elbows on his knees. He doesn't look up right away.`);
       if (G.flags.daleJailed) occupants.push(`Dale's in another cell, favoring his knee, looking deeply sorry for himself.`);
+      if (G.flags.oldSupplierJailed && !G.flags.gangJob3Done) occupants.push(`An older guy sits in the far cell, perfectly calm, like he's waiting on a bus rather than a bail hearing.`);
       const occupantLine = occupants.length ? occupants.join(' ') : 'The cells are empty right now. The toilet still runs.';
       return `Three cells. One has a bent bar that nobody has fixed. One has a inspirational
 poster ("HANG IN THERE") that is deeply ironic in context. The third has a toilet that runs
 constantly, like a small waterfall of institutional defeat.
+${G.flags.jailWallBlown ? `\n\nThere's a hole in the wall of one cell roughly the size of a motorbike, ringed with yellow caution tape nobody's gotten around to properly fixing. "I wonder where that could've come from," is a sentence you've heard more than one officer say out loud, to nobody in particular.` : ''}
 ${G.flags.inJail ? `You are in cell ${G.flags.jailCell||2}. Sheriff Hed is visible through the door, still eating.` : occupantLine}`;
     },
-    exits: { out: 'police_station' }, items: [], npcs: ['earl','dale'],
+    exits: { out: 'police_station' }, items: [], npcs: ['earl','dale','old_supplier'],
   },
 
   // ── TRAP HOUSE ─────────────────────────────
@@ -1380,7 +1382,7 @@ ${isEarlAtCamp() ? "Earl's truck is gone. His trailer is dark, lights off, curta
 ${trashBinDesc('trailer_park')}`,
     exits: {},
     items: [],
-    npcs: ['earl','cuz'],
+    npcs: ['earl','cuz','duane'],
   },
 
   moonshiner_camp: {
@@ -1732,6 +1734,8 @@ const NPCS = {
   // Trailer park / moonshiners
   earl:               { name: 'Earl' },
   cuz:                { name: 'Cuz' },
+  duane:              { name: 'Duane' },
+  old_supplier:       { name: 'the old guy' },
   // Sneed's
   sneed:              { name: 'Sneed' },
   // Cult
@@ -1762,6 +1766,8 @@ const NPCS = {
 //  ITEM DESCRIPTIONS
 // ═══════════════════════════════════════════════
 const ITEM_DESC = {
+  'grenade':            "A real military-surplus grenade. Heavier than it looks, and every part of you knows you shouldn't be holding it. Absurdly overkill for anything short of a real problem.",
+  'pipe bomb':          "A length of pipe, capped on both ends, wired to something that ticks in your imagination even though it obviously isn't ticking. Homemade. That's not reassuring.",
   'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
   "Hed's gift":         "A small wrapped box, taped a little too carefully. Needs to get to the post office.",
   'old magneto':        "A dense, greasy chunk of metal and copper wire. No idea what it's for, but it feels like it was built to last, and somebody clearly cared about it once.",
@@ -1888,6 +1894,8 @@ const CONSUMABLES = {
 //  ITEM VALUES  (fixed dollar value for barter)
 // ═══════════════════════════════════════════════
 const ITEM_VALUES = {
+  'grenade':            350,  // rare, absurd combat overkill — priced to discourage casual use
+  'pipe bomb':          200,  // homemade, less reliable than a grenade but still devastating
   'carburetor':         35,
   'drive chain':        20,
   'battery':            25,
@@ -2498,6 +2506,7 @@ const NPC_SHOPS = {
       { item: 'pocket knife',      price: 18,  randomChance: 0.6  },
       { item: 'kevlar vest',       price: 65,  randomChance: 0.75 },
       { item: 'kevlar helmet',     price: 55,  randomChance: 0.75 },
+      { item: 'grenade',           price: 450, randomChance: 0.08 },
     ],
     buys: true,
     pawnDiscount: 0.55,   // pays slightly less than Rick, but buys guns
@@ -3549,6 +3558,7 @@ function advanceTime(minutes) {
   checkPainkillerWearOff();
   checkDayPhaseTransition(minutesBefore, G.gameMinutes);
   checkWitnessTimer();
+  checkJailbreakPursuit();
   updateDisplayTime();
 }
 
@@ -3859,7 +3869,7 @@ function getNearbyNPC() {
 
 // ── ILLEGAL ITEM DETECTION ────────────────────────────────────
 const ALWAYS_ILLEGAL_ITEMS = new Set([
-  'fentanyl','switch','suppressor','forged credentials',
+  'fentanyl','switch','suppressor','forged credentials','grenade','pipe bomb',
 ]);
 // Items that are illegal to carry without a prescription / in public
 const SOFT_ILLEGAL_ITEMS = new Set([
@@ -5843,8 +5853,7 @@ function cmdGo(raw, obj) {
     print(`Every step hurts. Your ${G.brokenLeg} leg slows you down.`,'failure');
   }
   printRoom(destKey);
-
-  // First-visit events
+  checkGangChaosAftermath();
   if (destKey === 'church' && !G.flags.churchVisited) {
     G.flags.churchVisited = true;
     adjustKarma(5);
@@ -6639,6 +6648,9 @@ function cmdTalk(obj) {
   // Cuz
   if ((r.includes('cuz')||r.includes('cousin')) && G.location === getCuzLocation()) {
     talkCuz(); return;
+  }
+  if ((r.includes('duane')||r.includes('prepper')) && G.location === 'trailer_park') {
+    talkDuane(); return;
   }
 
   // Matthias
@@ -7525,6 +7537,47 @@ function talkEarl() {
   openDialogue('earl', greeting, options);
 }
 
+function talkDuane() {
+  if (!G.flags.metDuane) {
+    G.flags.metDuane = true;
+    print(`One of the trailers has plywood over half the windows and a hand-painted sign reading "TRESPASSERS WILL BE ASKED TO LEAVE (ONCE)." A guy in his 50s is out front, tightening bolts on something that doesn't need bolts.`);
+    print(`"Duane," he says, without looking up. "You need something, or you casing the place?"`);
+    printBlank();
+  }
+
+  const opts = [];
+
+  if (!G.flags.duaneBombGiven) {
+    if (!G.flags.duaneAskedBomb) {
+      opts.push({ label: "Ask if he's got anything explosive", action: () => {
+        G.flags.duaneAskedBomb = true;
+        logEvt('flag', 'duaneAskedBomb', true);
+        print(`Duane finally looks up. Doesn't seem surprised by the question, which is its own kind of concerning.`);
+        print(`"Maybe. Depends what you got for me." He looks you over. "I don't take cash for this kind of thing. Cash is a paper trail. You got real gear? Something with actual stopping power in it — a vest, armor, something with weight to it. That, I'll trade for."`, 'special');
+      }});
+    } else {
+      opts.push({ label: "Give him a kevlar vest", action: () => {
+        const idx = G.inventory.indexOf('kevlar vest');
+        if (idx === -1) { print(`You don't have a kevlar vest to trade him.`); return; }
+        G.inventory.splice(idx, 1);
+        logEvt('inventory_remove', 'kevlar vest');
+        G.inventory.push('pipe bomb');
+        logEvt('inventory_add', 'pipe bomb');
+        G.flags.duaneBombGiven = true;
+        logEvt('flag', 'duaneBombGiven', true);
+        printBlank();
+        print(`Duane turns the vest over in his hands like he's appraising a used car, grunts once in approval, and disappears into the trailer. Comes back out with something wrapped in a rag.`);
+        print(`"Don't drop it. Don't sneeze near it. Don't ask me where I got the pipe." He hands it over like it's a sandwich.`, 'special');
+        updateStatus();
+      }});
+    }
+  } else {
+    opts.push({ label: "Ask if he's got anything else like that", action: () => print(`"That was a one-time thing," Duane says. "I'm not a store."`) });
+  }
+
+  openDialogue('duane', `Duane wipes his hands on his jeans and looks at you like he's still deciding something.`, opts);
+}
+
 function talkCuz() {
   const earlAround = !isEarlAtBar() && !G.flags.earlJailed; // Cuz is only ever alone during Earl's bar hours (or once Earl's locked up)
 
@@ -7750,7 +7803,7 @@ function talkLaSenora() {
     { label: "Ask about the nightclub", action: () => print(`"Club Fenix is a legitimate business," La Señora says, with the serenity of someone for whom that statement has become automatic. "Entertainment. Community. Culture." He gestures around. "Los Ciegos deserves this."`) },
     { label: "Ask about work", action: () => {
       if (G.flags.gangTier >= 1) {
-        print(`La Señora tilts his head. "You've proven useful," he says. "Dennis will have something for you." The man on the left — Dennis — produces a card. It has a time on it. No location.`);
+        offerGangWork();
       } else {
         print(`La Señora smiles. "La Señora doesn't discuss work with strangers." A pause. "Come back when you're not a stranger."`, 'special');
       }
@@ -8839,6 +8892,12 @@ const WEAPONS = {
   'sawed-off shotgun': { accuracy: 0.50, damage: [70,110], lethalByZone: {head:0.99, body:0.55, limb:0.20},
     bleedChance: 0.55, bleedSev: 3, label: 'sawed-off shotgun', ranged: true,
     zoneAccuracyMult: { head: 0.30, left_arm: 0.40, right_arm: 0.40, left_leg: 0.40, right_leg: 0.40 } },
+  // Explosives — absurdly rare and expensive relative to their combat value.
+  // Everyone hears them (handled as a flat heavy heat hit in combatEnd), and
+  // lethality is near-guaranteed regardless of zone. Not worth it as strategy;
+  // not stopped if a player wants to use one anyway.
+  grenade:       { accuracy: 0.97, damage: [140,210], lethalByZone: {head:0.99, body:0.95, limb:0.85}, bleedChance: 0.5, bleedSev: 3, label: 'grenade', ranged: false, explosive: true },
+  'pipe bomb':   { accuracy: 0.85, damage: [110,170], lethalByZone: {head:0.96, body:0.88, limb:0.65}, bleedChance: 0.45, bleedSev: 3, label: 'pipe bomb', ranged: false, explosive: true },
 };
 
 // Helper — collapses a hit-zone string down to head/body/limb for lethality lookup
@@ -10475,7 +10534,14 @@ async function combatEnd(result) {
       );
     }
     const pw = getPlayerWeapon();
-    if (hasSuppressor(pw) && baseWeaponName(pw) === 'blok19') {
+    const pwDefForHeat = weaponDef(pw);
+    if (pwDefForHeat && pwDefForHeat.explosive) {
+      // Explosives are heard by the whole neighborhood — no suppressor discount exists.
+      const hd3 = G.flags.hedFavorDone ? 0.8 : 1.0;
+      G.policeHeat = Math.min(90, G.policeHeat + Math.round(35 * hd3));
+      logEvt('heat', G.policeHeat);
+      if (!G.isReplaying) print(`That was not quiet. Not remotely.`, 'failure');
+    } else if (hasSuppressor(pw) && baseWeaponName(pw) === 'blok19') {
       // Fights still add some base heat, but the suppressor cuts the noise signature.
       // The heat was already applied per-kill in combatEnemyWentDown; no extra here.
     } else if (baseWeaponName(pw) === 'blok19' || isShotgun(pw)) {
@@ -10537,6 +10603,7 @@ async function combatEnd(result) {
     checkWitnessCombatOutcome();
     checkHitmanCombatOutcome();
     checkRivalCombatOutcome();
+    checkGangJob1Outcome();
   }
 }
 
@@ -14029,6 +14096,352 @@ function checkRivalCombatOutcome() {
   logEvt('flag', 'gangTier', 1);
   printBlank();
   print(`Back at the trap house, Chuy already seems to know. "Good," is all he says at first. Then: "Alright. You're not just some guy off the street anymore." He pulls out a phone, taps something out. "La Señora's gonna want to meet you. Club Fenix. Don't be stupid about how you dress."`, 'special');
+}
+
+// ═══════════════════════════════════════════════
+//  GANG ROUTE — TIER 1
+// ═══════════════════════════════════════════════
+
+// Ending-lean tracking — not a hidden meter, just a running tally of which
+// route-culminating choices the player has made. Read at the actual ending
+// checkpoint (built later); nothing here decides an ending on its own.
+function addGangEndingWeight(type, amount) {
+  if (!G.flags.gangEndingScore) G.flags.gangEndingScore = { chaos: 0, quiet: 0, openwar: 0 };
+  G.flags.gangEndingScore[type] = (G.flags.gangEndingScore[type] || 0) + amount;
+  logEvt('flag', 'gangEndingScore', JSON.stringify(G.flags.gangEndingScore));
+}
+
+// Called from talkLaSenora's "Ask about work" option once gangTier >= 1
+function offerGangWork() {
+  if (!G.flags.gangJob1Done) { gangOfferJob1(); return; }
+  if (!G.flags.gangJob2Done) { gangOfferJob2(); return; }
+  if (!G.flags.gangJob3Done && !G.flags.gangJob3Active && !G.flags.jailbreakPursuitActive) { gangOfferJob3(); return; }
+  print(`"Patience," La Señora says. "Dennis will find you when there's something."`, 'special');
+}
+
+// ── JOB 1: COLLECTIONS (leverage-gated) ──────────────────────
+function gangOfferJob1() {
+  print(`La Señora folds her hands. "Small matter. A man named Ellis is three weeks behind on what he owes this operation. Not Chuy's kind of money — real money."`);
+  print(`"Dennis will point you at him. What you bring to the conversation is up to you."`, 'special');
+  openDialogue('la_senora', null, [
+    { label: "Ask around before confronting him", once: true, seenKey: 'dlg_gang_job1_leverage',
+      disabled: () => !!G.flags.gangJob1LeverageKnown,
+      action: () => {
+        print(`It doesn't take much digging. Ellis has a standing tab at the casino that's a lot bigger than his job explains, and he's been telling people a story about "a bad run" that doesn't hold together.`);
+        print(`That's enough. Not proof of anything, but enough to make a conversation go quiet instead of loud.`);
+        G.flags.gangJob1LeverageKnown = true;
+        logEvt('flag', 'gangJob1LeverageKnown', true);
+      }},
+    { label: "Go collect", action: () => gangRunJob1() },
+  ]);
+}
+
+async function gangRunJob1() {
+  if (G.flags.gangJob1LeverageKnown) {
+    print(`Ellis opens the door already talking — excuses lined up, rehearsed. You mention the casino tab before he finishes the second sentence.`, 'narration');
+    await sleep(500);
+    print(`He goes quiet fast. Doesn't argue. Doesn't even really look at you. Just goes and gets the money, all of it, like he'd been expecting this exact conversation for weeks and was almost relieved it finally arrived.`, 'narration');
+    const pay = 70;
+    receiveCash(pay);
+    G.flags.gangJob1CleanResolution = true;
+    logEvt('flag', 'gangJob1CleanResolution', true);
+    addGangEndingWeight('quiet', 1);
+    adjustKarma(-3);
+    printBlank();
+    print(`Back at Club Fenix, La Señora counts it without really counting it — she already knows it's right. "Clean," she says, sounding almost pleased. "That's how this is supposed to go."`, 'special');
+  } else {
+    print(`Ellis doesn't open the door talking. He opens it already knowing why you're there, and it goes physical almost immediately.`, 'narration');
+    G.flags.gangJob1CombatActive = true;
+    logEvt('flag', 'gangJob1CombatActive', true);
+    startMultiCombat([{ name: 'Ellis', weapon: 'baseball bat', hp: 90 }], [], false, false);
+    return;
+  }
+  G.flags.gangJob1Done = true;
+  logEvt('flag', 'gangJob1Done', true);
+}
+
+function checkGangJob1Outcome() {
+  if (!G.flags.gangJob1CombatActive) return;
+  if (combatState) return;
+  G.flags.gangJob1CombatActive = false;
+  logEvt('flag', 'gangJob1CombatActive', false);
+  if (G.gameOver) return;
+
+  const killed = !!G.flags['killed_Ellis'];
+  printBlank();
+  if (killed) {
+    print(`Ellis isn't getting up. There's no money coming from this now — but there was never going to be, not really, not once it went physical.`, 'system');
+    addGangEndingWeight('openwar', 1);
+    adjustKarma(-8);
+  } else {
+    print(`Ellis is on the floor, beaten but breathing, and considerably more cooperative than he was five minutes ago. He finds the money faster than seems medically advisable.`, 'system');
+    const pay = 50;
+    receiveCash(pay);
+    adjustKarma(-5);
+  }
+  G.flags.gangJob1Done = true;
+  logEvt('flag', 'gangJob1Done', true);
+  printBlank();
+  if (killed) {
+    print(`Back at Club Fenix, La Señora hears the report and her expression cools by exactly one degree. "That was not the professional outcome," she says. "A debtor who is dead is a debtor who cannot pay next month." She doesn't dwell on it. "Still. Handled. Dennis will find your next thing."`, 'special');
+  } else {
+    print(`La Señora nods slowly at the report. "Not elegant. But complete." She says it like a passing grade, not a compliment.`, 'special');
+  }
+}
+
+// ── JOB 2: MOVING PRODUCT ACROSS ZONES ───────────────────────
+function gangOfferJob2() {
+  print(`"Next thing is heavier," La Señora says. "Real weight, moving from here to the District. Chuy's little errands, this is not."`);
+  print(`Dennis, from behind her, adds nothing out loud, but he's watching you get told this, which feels like its own kind of evaluation.`, 'special');
+  openDialogue('la_senora', null, [
+    { label: "Make the run", action: () => gangRunJob2() },
+    { label: "Not right now", action: () => print(`"It'll wait," La Señora says. "Not forever."`) },
+  ]);
+}
+
+async function gangRunJob2() {
+  print(`The route runs closer to the District than anything Chuy ever had you carrying — closer to the courthouse, closer to actual patrols. You keep to side streets and it still feels too visible.`, 'narration');
+  await sleep(600);
+  print(`Nobody stops you. That doesn't make it feel safe, exactly, just survived.`, 'narration');
+  illegalAct('drug trafficking', 18);
+  const pay = 90;
+  receiveCash(pay);
+  G.flags.gangJob2Done = true;
+  logEvt('flag', 'gangJob2Done', true);
+  printBlank();
+  print(`Dennis is the one who actually counts the delivery in, not La Señora. "You didn't panic," he says. Not warm, exactly. But it's the first thing he's said to you that wasn't an instruction.`, 'special');
+  updateStatus();
+}
+
+// ── JOB 3: THE SILENCE (culminating, branching) ──────────────
+function gangOfferJob3() {
+  G.flags.gangJob3Active = true;
+  logEvt('flag', 'gangJob3Active', true);
+  G.flags.oldSupplierJailed = true;
+  logEvt('flag', 'oldSupplierJailed', true);
+  print(`La Señora's tone shifts — less business, more mild curiosity. "One of our suppliers has gone quiet. Older man, reliable for years, now nothing." She waves a hand. "Probably nothing. Find out what happened. That's all."`);
+  print(`It's framed as small. It is not treated as urgent. Nobody asks you to fix anything — just to look.`, 'special');
+  openDialogue('la_senora', null, [
+    { label: "Go find out what happened", action: () => gangInvestigateJob3() },
+  ]);
+}
+
+function gangInvestigateJob3() {
+  print(`It doesn't take long to find the answer: the old guy isn't dead, isn't skipped town — he's sitting in a cell downtown on something that has nothing to do with the operation. Wrong place, wrong time, unrelated charge.`, 'narration');
+  print(`That's the whole assignment, technically. You could report exactly that and be done. Nobody would blame you.`, 'narration');
+  printBlank();
+  print(`Two people have opinions about how he ended up there, and they don't agree.`, 'system');
+  gangJob3StoryChoice();
+}
+
+function gangJob3StoryChoice() {
+  const opts = [];
+  if (!G.flags.gangJob3UnderlingStory) {
+    opts.push({ label: "Talk to his underling first", action: () => {
+      G.flags.gangJob3UnderlingStory = true;
+      logEvt('flag', 'gangJob3UnderlingStory', true);
+      print(`The underling doesn't seem too broken up about it. "Honestly? Guy's been sloppy for a while. I've been covering for him." A pause, a little too calculated. "I could run this. I've basically been running it."`, 'narration');
+      gangJob3StoryChoice();
+    }});
+  }
+  if (!G.flags.gangJob3OldGuyStory) {
+    opts.push({ label: "Visit the old guy in his cell first", action: () => {
+      G.flags.gangJob3OldGuyStory = true;
+      logEvt('flag', 'gangJob3OldGuyStory', true);
+      print(`The old guy doesn't seem worried, which is its own kind of answer. "That kid's been trying to push me out for months. Skimming, probably. I get arrested on some unrelated nonsense and suddenly he's got a story ready to go? Funny timing."`, 'narration');
+      print(`He also mentions, almost offhand, that he knows exactly who called this in on him, and where the paperwork on it is sitting. Might matter, if you wanted this to go away instead.`, 'narration');
+      G.flags.gangJob3EvidenceLeadKnown = true;
+      logEvt('flag', 'gangJob3EvidenceLeadKnown', true);
+      gangJob3StoryChoice();
+    }});
+  }
+  opts.push({ label: "Decide what to do about it", disabled: () => !G.flags.gangJob3UnderlingStory && !G.flags.gangJob3OldGuyStory, action: () => gangJob3DecisionMenu() });
+  openDialogue('la_senora', null, opts);
+}
+
+function gangJob3DecisionMenu() {
+  print(`Nobody's asked you to pick a side. That's exactly the part that makes it your call.`, 'system');
+  openDialogue('la_senora', null, [
+    { label: "Path A — Shift attention, let the underling step up", action: () => gangJob3PathAMenu() },
+    { label: "Path B — Spring the old guy", action: () => gangJob3PathBMenu() },
+  ]);
+}
+
+// ── PATH A — easier: only needs police attention redirected ──
+function gangJob3PathAMenu() {
+  const opts = [];
+  opts.push({ label: `Pay a bribe ($180) to get them to back off`, disabled: () => playerCashTotal() < 180, action: () => gangResolveJob3('A', 'bribe') });
+  if (G.flags.hedFavorDone) {
+    opts.push({ label: "Call in Hed's favor", action: () => gangResolveJob3('A', 'favor') });
+  }
+  opts.push({ label: "Flood the homeless camp with amphetamines and hammers (see if that works)", action: () => gangJob3ChaosSetup() });
+  opts.push({ label: "Back out", action: () => print(`You leave it for now.`) });
+  openDialogue('la_senora', `Getting them to look elsewhere doesn't require much — just enough of a distraction.`, opts);
+}
+
+// ── PATH B — harder: a live case actually has to disappear ───
+function gangJob3PathBMenu() {
+  const opts = [];
+  opts.push({ label: "Get rid of the evidence", disabled: () => !G.flags.gangJob3EvidenceLeadKnown, action: () => gangResolveJob3('B', 'evidence') });
+  opts.push({ label: `Bribe ($320) and call in Hed's favor together`, disabled: () => (playerCashTotal() < 320 || !G.flags.hedFavorDone), action: () => gangResolveJob3('B', 'bribefavor') });
+  opts.push({ label: "Break him out — need the motorbike and something that goes boom",
+    disabled: () => !(G.flags.hasCar && (G.inventory.includes('grenade') || G.inventory.includes('pipe bomb'))),
+    action: () => gangJailbreak() });
+  opts.push({ label: "Back out", action: () => print(`You leave it for now.`) });
+  openDialogue('la_senora', `Getting a live case to just vanish is a much bigger ask than getting them to look elsewhere.`, opts);
+}
+
+// ── Absurd Path A3 — homeless camp chaos ─────────────────────
+function gangJob3ChaosSetup() {
+  print(`You go back to Chuy first. Ask for an amount of amphetamines that should raise questions. It doesn't. "For La Señora," you say, and that's the whole conversation.`, 'narration');
+  print(`Then Sneed's, for a bulk hammer order. "Community development project," you tell him. He shrugs and rings it up.`, 'narration');
+  if (playerCashTotal() < 180) {
+    print(`...except you don't have $180 for the hammers. Come back when you do.`, 'failure');
+    return;
+  }
+  spendCash(180);
+  print(`Out to the homeless camp. You hand out amphetamines and hammers like party favors. Nobody asks why. Nobody ever asks why, out here.`, 'narration');
+  G.flags.gangJob3ChaosSeeded = true;
+  G.flags.gangJob3ChaosSeededAt = G.gameMinutes;
+  logEvt('flag', 'gangJob3ChaosSeeded', true);
+  logEvt('flag', 'gangJob3ChaosSeededAt', G.flags.gangJob3ChaosSeededAt);
+  printBlank();
+  print(`[ Give it a day. Then check the park or the police station. ]`, 'system');
+  updateStatus();
+}
+
+// Called when player visits park or police_station after chaos was seeded
+function checkGangChaosAftermath() {
+  if (!G.flags.gangJob3ChaosSeeded || G.flags.gangJob3ChaosResolved) return;
+  if (G.gameMinutes < G.flags.gangJob3ChaosSeededAt + 24 * 60) return;
+  if (!['park','police_station'].includes(G.location)) return;
+
+  G.flags.gangJob3ChaosResolved = true;
+  logEvt('flag', 'gangJob3ChaosResolved', true);
+  printBlank();
+  print(`Whatever you expected, it wasn't this. Full-blown chaos — people sprinting in every direction, at least three separate hammer-related altercations in progress, someone screaming about the sound of colors.`, 'narration');
+  print(`Sheriff Hed is standing very still in the middle of it, talking at Deputy Hicks, who is somehow asleep through all of it.`, 'narration');
+  print(`"...and that's why I'm saying the camp is the actual problem now," Hed is saying. "Forget everything else. All hands, out there, starting tomorrow."`, 'special');
+  gangResolveJob3('A', 'chaos');
+}
+
+function gangResolveJob3(path, method) {
+  G.flags.gangSupplierPath = path;
+  G.flags.gangSupplierMethod = method;
+  logEvt('flag', 'gangSupplierPath', path);
+  logEvt('flag', 'gangSupplierMethod', method);
+
+  if (method === 'bribe') {
+    spendCash(180);
+    print(`You pay the $180 to make some questions quietly stop being asked. It hurts to hand over — you don't get a receipt, and you don't get a reason to think you'll see it again.`, 'narration');
+    addGangEndingWeight('quiet', 2);
+  } else if (method === 'favor') {
+    print(`You call in Hed's favor. He doesn't love doing it, but he doesn't ask many questions either — that's kind of the point of a favor.`, 'narration');
+    addGangEndingWeight('quiet', 2);
+  } else if (method === 'evidence') {
+    print(`Between what the old guy told you and a little digging, the key piece of evidence goes missing from where it was supposed to be logged, along with any real appetite to chase down why.`, 'narration');
+    addGangEndingWeight('quiet', 3);
+  } else if (method === 'bribefavor') {
+    spendCash(320);
+    print(`You pay $320 AND call in Hed's favor — a genuinely live case doesn't just evaporate because you asked nicely. This is the expensive way to make it disappear entirely.`, 'narration');
+    addGangEndingWeight('quiet', 3);
+  } else if (method === 'chaos') {
+    addGangEndingWeight('chaos', 3);
+    G.flags.homelessRouteBlocked = true;
+    logEvt('flag', 'homelessRouteBlocked', true);
+  }
+
+  const gotOldGuyOut = (path === 'B');
+  printBlank();
+  if (gotOldGuyOut) {
+    print(`The old guy walks. Quietly reinstated, no fuss. The underling doesn't get to move up after all — whatever story he was building, it doesn't get to matter now.`, 'narration');
+  } else {
+    print(`The old guy stays exactly where he is. Nobody springs him. Instead, the underling gets the nod, gets the route, gets to be exactly as good at this as he's been claiming he is.`, 'narration');
+  }
+
+  // Money for A1/B2's bribe quietly reappears later, no explanation given —
+  // it read as a real cost while it was happening.
+  if (method === 'bribe' || method === 'bribefavor') {
+    const amt = method === 'bribe' ? 180 : 320;
+    receiveCash(amt);
+    printBlank();
+    print(`A few days later an envelope shows up under your apartment door. $${amt}, exact, no note. You never mentioned the bribe to anyone at Club Fenix. Business expenses, apparently, get covered without being asked.`, 'system');
+  }
+
+  gangFinishJob3();
+}
+
+// ── Absurd Path B3 — literal jailbreak ───────────────────────
+function gangJailbreak() {
+  const explosive = G.inventory.includes('grenade') ? 'grenade' : 'pipe bomb';
+  const idx = G.inventory.indexOf(explosive);
+  G.inventory.splice(idx, 1);
+  logEvt('inventory_remove', explosive);
+
+  print(`This is, by any reasonable standard, an insane plan. You're doing it anyway.`, 'narration');
+  print(`You get the motorbike as close to the cell block wall as you can manage without being seen, wedge the ${explosive} into the gap in the brick, and get clear.`, 'narration');
+  print(`The wall stops being a wall. Alarms everywhere. You're already moving before the dust settles, the old guy right behind you, both of you on the bike.`, 'failure');
+
+  illegalAct('jailbreak', 40);
+  G.flags.jailWallBlown = true;
+  logEvt('flag', 'jailWallBlown', true);
+  G.flags.jailbreakPursuitActive = true;
+  G.flags.jailbreakPursuitDeadline = G.gameMinutes + 40;
+  logEvt('flag', 'jailbreakPursuitActive', true);
+  logEvt('flag', 'jailbreakPursuitDeadline', G.flags.jailbreakPursuitDeadline);
+  printBlank();
+  print(`[ Get to the Sticks. Now. ]`, 'system');
+}
+
+const GANG_STICKS_ZONE = new Set(['sticks','woods','auto_shop','trailer_park','moonshiner_camp',
+  'sneeds','cult_camp','reservoir','body_location','creek','woods_lake','recycling_plant']);
+
+// Called from advanceTime, mirrors the witness-timer pattern
+function checkJailbreakPursuit() {
+  if (!G.flags.jailbreakPursuitActive || G.gameOver || combatState) return;
+  if (GANG_STICKS_ZONE.has(G.location)) {
+    G.flags.jailbreakPursuitActive = false;
+    logEvt('flag', 'jailbreakPursuitActive', false);
+    if (!G.isReplaying) gangJailbreakSuccess();
+    return;
+  }
+  if (G.gameMinutes >= G.flags.jailbreakPursuitDeadline) {
+    G.flags.jailbreakPursuitActive = false;
+    logEvt('flag', 'jailbreakPursuitActive', false);
+    if (!G.isReplaying) gangJailbreakCaught();
+  }
+}
+
+function gangJailbreakSuccess() {
+  printBlank();
+  print(`You make the Sticks with the sirens still somewhere behind you, not on top of you. That's the difference between "evaded" and "caught."`, 'narration');
+  addGangEndingWeight('openwar', 3);
+  G.flags.gangForcedMembership = true;
+  logEvt('flag', 'gangForcedMembership', true);
+  gangResolveJob3('B', 'jailbreak');
+  printBlank();
+  print(`La Señora's reaction, when you get back to Club Fenix, starts somewhere well past furious. "There is now," she says, very evenly, "a manhunt. For a supplier who will never work a shift again regardless, because he is now a WANTED MAN." She doesn't raise her voice. It's somehow worse than if she had.`, 'special');
+  print(`She keeps going for a while. The department is cracking down harder on everything now, on everyone, because of this. It is, by any measure, a mess.`, 'special');
+  printBlank();
+  print(`Then, abruptly, she stops. Looks at you like she's reconsidering something. "...You know," she says, "you're a diamond in the rough. Reckless. Undisciplined. But you MOVE." A pause. "You also owe this family a great deal of cleanup, now. That's not really a request." She smiles the way she smiles when something is decided and not up for discussion.`, 'special');
+  print(`There isn't really a version of this where you say no.`, 'system');
+}
+
+function gangJailbreakCaught() {
+  printBlank();
+  print(`You don't make it. Cruisers box you in two blocks short of the Sticks. This did not go well.`, 'failure');
+  triggerArrest('aiding an escape');
+}
+
+function gangFinishJob3() {
+  G.flags.gangJob3Done = true;
+  G.flags.gangJob3Active = false;
+  logEvt('flag', 'gangJob3Done', true);
+  logEvt('flag', 'gangJob3Active', false);
+  adjustKarma(-5);
+  printBlank();
+  print(`You didn't have to solve this. Nobody asked you to. That's exactly what Dennis notices.`, 'system');
+  print(`"Huh," is all he says at first, looking at you like he's updating a file in his head. Then: "Alright. You're not just running errands anymore." La Señora nods along, already thinking about something else. "Dennis will find you when Tier Two has something worth your time."`, 'special');
 }
 
 // ═══════════════════════════════════════════════
