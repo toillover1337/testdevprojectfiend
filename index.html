@@ -1369,7 +1369,7 @@ From here you can reach: the auto shop, the trailer park, Sneed's Feed and Seed,
 the reservoir further out, and a recycling drop-off around back of a fenced lot.
 The street is back the way you came.
 ${trashBinDesc('sticks')}`,
-    exits: { auto_shop: 'auto_shop', trailer_park: 'trailer_park', sneeds: 'sneeds', woods: 'woods', reservoir: 'reservoir', recycling: 'recycling_plant' },
+    exits: { auto_shop: 'auto_shop', trailer_park: 'trailer_park', sneeds: 'sneeds', woods: 'woods', reservoir: 'reservoir', recycling: 'recycling_plant', bus_stop: 'bus_stop_sticks' },
     items: [], npcs: [],
   },
 
@@ -6604,7 +6604,7 @@ function cmdTalk(obj) {
 
   // Dealer
   if ((r.includes('dealer')||r.includes('nascar')||r.includes('jacket')||r.includes('guy'))&&G.location==='alley') {
-    handleAlleyDealer(); return;
+    talkNascar(); return;
   }
 
   // Father Mick
@@ -6648,10 +6648,6 @@ function cmdTalk(obj) {
   // Alley dealer — ask about fentanyl
   if ((r.includes('fentanyl')||r.includes('heavy')||r.includes('hard stuff')) && G.location==='alley') {
     G.flags.askingForFentanyl = true;
-    handleAlleyDealer(); return;
-  }
-  // Alley dealer general
-  if ((r.includes('dealer')||r.includes('nascar')||r.includes('jacket')||r.includes('guy')||r.includes('him')||r.includes('man'))&&G.location==='alley') {
     handleAlleyDealer(); return;
   }
   // Chuy
@@ -14173,6 +14169,15 @@ what a doctor would later describe — had there been time to reach a doctor —
 }
 
 // ── ALLEY DEALER HANDLER (updated for dealer chain) ──────────
+// ── NASCAR JACKET — talk (distinct from barter/handleAlleyDealer) ──
+function talkNascar() {
+  if (G.flags.alleyDealerGone) { print(`He's not here right now.`); return; }
+  if (isNpcDead('alley_dealer')) { printNpcDeadLine('alley_dealer'); return; }
+  if (G.flags.askingForFentanyl) { handleAlleyDealer(); return; }
+  print(`He glances at you. "What do you need." It's not a question.`);
+  print(`[ You can "barter" with him, or ask him about "fentanyl" / the heavy stuff. ]`, 'system');
+}
+
 function handleAlleyDealer() {
   if (G.flags.alleyDealerGone) { print(`He's not here right now.`); return; }
 
@@ -15190,14 +15195,15 @@ function checkDayPhaseTransition(minutesBefore, minutesAfter) {
     }
   }
 }
-  // After a time-advancing action, pick a display time within ±3 min of real time
-  // Always goes forward, snaps to nearest 5 min ± 3
+  // After a time-advancing action, pick a display time within ±3 min of real
+  // time. G.displayTime is stored as an absolute (non-wrapped) minute count —
+  // comparing wrapped values here was the bug: once real time rolled past
+  // midnight, "never go backwards" would compare a small wrapped value
+  // against yesterday's high one and the watch would freeze forever.
 function updateDisplayTime() {
-  const real = G.gameMinutes % 1440; // time of day in minutes
-  const base  = Math.round(real / 5) * 5; // snap to 5-min grid
+  const base   = Math.round(G.gameMinutes / 5) * 5; // snap to 5-min grid
   const offset = Math.floor(Math.random() * 7) - 3; // -3 to +3
-  const display = Math.max(G.displayTime, base + offset); // never go backwards
-  G.displayTime = display % 1440;
+  G.displayTime = Math.max(G.displayTime, base + offset);
   logEvt('flag','displayTime', G.displayTime);
 }
 
@@ -15212,8 +15218,6 @@ function formatTime(mins) {
 
 function formatDate() {
   if (!G.startDate) return 'unknown date';
-  // Advance date based on total game minutes elapsed
-  const startMins = G.displayTime - (G.gameMinutes % 1440);
   const daysElapsed = Math.floor(G.gameMinutes / 1440);
   let { month, day } = G.startDate;
   let d = day + daysElapsed;
