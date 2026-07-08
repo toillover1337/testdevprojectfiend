@@ -682,11 +682,12 @@ const DRUGS = {
     effects:     {},
   },
   pills: {
-    label:       'pain pills',
+    label:       'percs',
     type:        'opiate_soft',
     lethal:      false,
     overdoseAt:  3,     // 3rd use within odWindow minutes = overdose death
     odWindow:    240,   // 4-hour rolling danger window
+    odType:      'death',
     cravingFix:  70,
     duration:    120,   // minutes
     effects: { fatigue: -0.5, hunger: -0.3, craving: -0.8 },
@@ -699,18 +700,57 @@ const DRUGS = {
     duration:    90,
     effects: { hunger: 0.4, fatigue: 0.2, craving: -0.5 },
   },
-  stimulants: {
-    label:       'stimulants',
+  speed: {
+    label:       'speed',
     type:        'stimulant',
     lethal:      false,
+    overdoseAt:  6,     // safest of the four stimulants
+    odWindow:    240,
+    odType:      'death',
+    cravingFix:  20,
+    duration:    240,   // long, comparatively mild
+    effects: { fatigue: -0.7, hunger: -0.5, craving: -0.2 },
+  },
+  coke: {
+    label:       'coke',
+    type:        'stimulant',
+    lethal:      false,
+    overdoseAt:  5,
+    odWindow:    240,
+    odType:      'death',
+    cravingFix:  25,
+    duration:    60,    // short, punchy
+    effects: { fatigue: -0.6, hunger: -0.7, craving: -0.15 },
+  },
+  crack: {
+    label:       'crack',
+    type:        'stimulant',
+    lethal:      false,
+    overdoseAt:  4,     // riskiest alongside meth
+    odWindow:    240,
+    odType:      'death',
+    cravingFix:  35,
+    duration:    30,    // very short, very intense
+    effects: { fatigue: -0.8, hunger: -0.4, craving: -0.1 },
+  },
+  meth: {
+    label:       'meth',
+    type:        'stimulant',
+    lethal:      false,
+    overdoseAt:  4,     // riskiest alongside crack
+    odWindow:    240,
+    odType:      'death',
     cravingFix:  15,
-    duration:    180,
-    effects: { fatigue: -0.9, hunger: -0.6, craving: -0.2 },
+    duration:    300,   // longest, heaviest
+    effects: { fatigue: -1.0, hunger: -0.9, craving: -0.05 },
   },
   alcohol: {
     label:       'alcohol',
     type:        'depressant',
     lethal:      false,
+    overdoseAt:  4,     // 4th drink within the window triggers a blackout, not death
+    odWindow:    180,
+    odType:      'blackout',
     cravingFix:  20,
     duration:    90,
     effects: { fatigue: 0.3, bladder: 0.5, craving: -0.3 },
@@ -720,12 +760,14 @@ const DRUGS = {
 // Items that map to a drug
 const ITEM_TO_DRUG = {
   'fentanyl':         'fentanyl',
-  'pain pills':       'pills',
+  'percs':            'pills',
   'pills':            'pills',
   'weed':             'weed',
   'joint':            'weed',
-  'stimulants':       'stimulants',
-  'speed':            'stimulants',
+  'speed':            'speed',
+  'coke':             'coke',
+  'crack':            'crack',
+  'meth':             'meth',
   'beer':             'alcohol',
   'moonshine':        'alcohol',
   'alcohol':          'alcohol',
@@ -784,6 +826,7 @@ const VERBS = {
                'dumpster dive','go through trash','go through garbage','go through bin',
                'dig around','look around trash','search around'],
   testfight:   ['testfight','test fight','test combat'],
+  distribute:  ['distribute','hand out','give out','pass out','hand them out'],
   devgive:     ['devgive'],
   devlistnpc:  ['devlistnpc'],
   devlistloc:  ['devlistloc'],
@@ -1766,6 +1809,14 @@ const NPCS = {
 //  ITEM DESCRIPTIONS
 // ═══════════════════════════════════════════════
 const ITEM_DESC = {
+  'box of hammers':     "A full case of brand-new claw hammers. Extremely heavy, faintly absurd to be carrying around, and not really explainable if anyone asks.",
+  'packaged weed':      "A vacuum-sealed brick of weed, way more than any one person needs. Built for moving, not using.",
+  'packaged percs':     "A tightly wrapped bulk supply of percs, way more than any one person needs. Built for moving, not using.",
+  'packaged speed':     "A vacuum-sealed brick of speed, way more than any one person needs. Built for moving, not using.",
+  'packaged coke':      "A tightly wrapped bulk brick of coke, way more than any one person needs. Built for moving, not using.",
+  'packaged crack':     "A vacuum-sealed bulk supply of crack, way more than any one person needs. Built for moving, not using.",
+  'packaged meth':      "A tightly wrapped bulk supply of meth, way more than any one person needs. Built for moving, not using.",
+  'packaged fentanyl':  "A tightly wrapped bulk supply of fentanyl, way more than any one person needs. Built for moving, not using. Carrying this around is its own kind of risk.",
   'grenade':            "A real military-surplus grenade. Heavier than it looks, and every part of you knows you shouldn't be holding it. Absurdly overkill for anything short of a real problem.",
   'pipe bomb':          "A length of pipe, capped on both ends, wired to something that ticks in your imagination even though it obviously isn't ticking. Homemade. That's not reassuring.",
   'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
@@ -1786,10 +1837,13 @@ const ITEM_DESC = {
   'scratch ticket':     'A $2 lottery scratcher. The odds are not in your favor.',
   'winning ticket':     'A scratched lottery ticket with a payout. Redeem at Wally Gas.',
   'energy drink':       'A can of WIRED SKULL. 250mg caffeine. Tastes like a highlighter.',
-  'pain pills':         'A handful of hydrocodone. The kind of thing that starts stories.',
+  'percs':              'A handful of hydrocodone, sold as "percs" whether or not that\'s technically accurate. The kind of thing that starts stories.',
+  'speed':              'A baggie of amphetamine. Keeps you moving when moving is the last thing you want.',
+  'coke':               "A small bag of cocaine, cut who knows how many times by who knows who.",
+  'crack':              'A few rocks in a twist of plastic. Cheap, fast, and gone almost as soon as it starts.',
+  'meth':               "A baggie of something crystalline that catches the light in a way that feels like it shouldn't.",
   'weed':               'A small bag. Los Ciegos has more of this than jobs.',
   'fentanyl':           'You know what this is.',
-  'stimulants':         'Something to keep you moving when moving is the last thing you want.',
   'beer':               'A can of something cheap. Takes the edge off edges.',
   'water bottle':       'A plastic bottle of water. Simple. Necessary.',
   'soup':               "Doris's chicken noodle. Still warm.",
@@ -1894,6 +1948,14 @@ const CONSUMABLES = {
 //  ITEM VALUES  (fixed dollar value for barter)
 // ═══════════════════════════════════════════════
 const ITEM_VALUES = {
+  'box of hammers':     0,   // not for sale — a means to an end, not a good
+  'packaged weed':      80,
+  'packaged percs':     160,
+  'packaged speed':     110,
+  'packaged coke':      190,
+  'packaged crack':     100,
+  'packaged meth':      170,
+  'packaged fentanyl':  260,
   'grenade':            350,  // rare, absurd combat overkill — priced to discourage casual use
   'pipe bomb':          200,  // homemade, less reliable than a grenade but still devastating
   'carburetor':         35,
@@ -1909,9 +1971,12 @@ const ITEM_VALUES = {
   // winning ticket value is dynamic — parsed from item name at runtime
   'soup':               4,
   'beer':               2,
-  'pain pills':         25,
+  'percs':              25,
   'weed':               12,
-  'stimulants':         20,
+  'speed':              20,
+  'coke':               35,
+  'crack':              15,
+  'meth':               30,
   'fentanyl':           40,
   'cigarettes':         5,
   'lighter':            1,
@@ -2003,13 +2068,13 @@ const ITEM_SIZE = {
   // small — pocket-sized, easy to palm
   'lighter': 'small', 'condom': 'small', 'cigarettes': 'small',
   'worms': 'small', 'cricket bait': 'small', 'stink bait': 'small', 'cut bait': 'small',
-  'pain pills': 'small', 'otc painkillers': 'small', 'antiseptic': 'small',
+  'percs': 'small', 'otc painkillers': 'small', 'antiseptic': 'small',
   'small box of 9mm': 'small', 'scratch ticket': 'small', 'paperback': 'small',
   'small box of buckshot': 'small', 'large box of buckshot': 'small', 'small box of slugs': 'small', 'large box of slugs': 'small',
   'small box of 9mm AP': 'small', 'large box of 9mm AP': 'small',
   'loose 9mm round': 'small', 'loose 9mm AP round': 'small', 'loose buckshot shell': 'small', 'loose slug': 'small',
   "Hed's gift": 'small', 'old magneto': 'medium', 'jar of moonshine': 'small',
-  'weed': 'small', 'stimulants': 'small', 'fentanyl': 'small',
+  'weed': 'small', 'speed': 'small', 'coke': 'small', 'crack': 'small', 'meth': 'small', 'fentanyl': 'small',
   'pocket knife': 'small', 'flask': 'small', 'cheap watch': 'small',
   'phone': 'small', 'envelope': 'small',
   'moonshine': 'small', 'nails': 'small',
@@ -2049,6 +2114,14 @@ const CAP_COST = {
 
 // Named overrides for items whose bulk doesn't match their theft-size tier
 const CAP_COST_OVERRIDE = {
+  'box of hammers':       4.0,   // heavy, awkward bulk load
+  'packaged weed':        3.0,
+  'packaged percs':       3.0,
+  'packaged speed':       3.0,
+  'packaged coke':        3.0,
+  'packaged crack':       3.0,
+  'packaged meth':        3.0,
+  'packaged fentanyl':    3.0,
   'loose 9mm round':      0.02,
   'loose 9mm AP round':   0.02,
   'loose buckshot shell': 0.03,
@@ -2150,6 +2223,14 @@ function itemValue(item) {
 // G.itemCharges[itemName] = [chargesLeftInContainer1, chargesLeftInContainer2, ...]
 // The first element (index 0) is always the active "top of stack" container.
 const MAX_CHARGES = {
+  'box of hammers':    5,   // bulk hardware — 4 handouts, then "here's the rest"
+  'packaged weed':     8,
+  'packaged percs':    8,
+  'packaged speed':    8,
+  'packaged coke':     8,
+  'packaged crack':    8,
+  'packaged meth':     8,
+  'packaged fentanyl': 8,
   'worms':            6,
   'cricket bait':      5,
   'stink bait':        4,
@@ -2339,8 +2420,8 @@ const NPC_SHOPS = {
     blockedFlag: null,
     sells: [
       { item: 'weed',        price: 12 },
-      { item: 'pain pills',  price: 25 },
-      { item: 'stimulants',  price: 20, randomChance: 0.5 },
+      { item: 'percs',       price: 25 },
+      { item: 'speed',       price: 20, randomChance: 0.5 },
     ],
     buys: false,
     greet: () => `He glances at you. "What do you need." It's not a question.`,
@@ -2353,9 +2434,12 @@ const NPC_SHOPS = {
     type: 'shopkeeper',
     blockedFlag: null,
     sells: [
-      { item: 'pain pills',  price: 20 },  // cheaper than alley
-      { item: 'stimulants',  price: 18, randomChance: 0.7 },
+      { item: 'percs',       price: 20 },  // cheaper than alley
+      { item: 'speed',       price: 18, randomChance: 0.7 },
       { item: 'weed',        price: 10, randomChance: 0.8 },
+      { item: 'coke',        price: 35, randomChance: 0.5 },
+      { item: 'crack',       price: 15, randomChance: 0.4 },
+      { item: 'meth',        price: 30, randomChance: 0.3 },
     ],
     buys: false,
     greet: () => `Chuy looks at you without moving. "Nascar sent you?" He doesn't wait for an answer. "What do you need."`,
@@ -2449,6 +2533,7 @@ const NPC_SHOPS = {
       { item: 'moonshine',      price: 4, randomChance: 0.6 },
       { item: 'pocket knife',   price: 12, randomChance: 0.7 },
       { item: 'backpack',       price: 18 },
+      { item: 'box of hammers', price: 180 },
     ],
     buys: false,
     greet: () => `Sneed looks up from doing nothing. "Help you."`,
@@ -3525,6 +3610,19 @@ function advanceTime(minutes) {
       if (rates[need] !== undefined) rates[need] = Math.max(0, rates[need] + mult);
     }
   }
+  // Crack/meth secondary addiction — recomputed fresh each tick from stored
+  // use timestamps, so it self-clears once 3 game days pass with no repeat
+  // use of that specific drug. Tracked and capped independently per drug.
+  if (G.flags.secondAddictionTimes) {
+    const saWindow = 3 * 24 * 60;
+    for (const dk of ['crack', 'meth']) {
+      const times = G.flags.secondAddictionTimes[dk];
+      if (!times || !times.length) continue;
+      const recent = times.filter(t => G.gameMinutes - t < saWindow).length;
+      const level = Math.min(2, Math.max(0, recent - 1));
+      if (level > 0) rates.craving = (rates.craving || 0) + NEED_RATES.craving * 0.5 * level;
+    }
+  }
   // Craving debuffs: high craving = sweating (thirst ticks faster)
   if (G.needs.craving >= 75) {
     rates.thirst  = (rates.thirst  || 0) + 0.04;
@@ -3559,6 +3657,7 @@ function advanceTime(minutes) {
   checkDayPhaseTransition(minutesBefore, G.gameMinutes);
   checkWitnessTimer();
   checkJailbreakPursuit();
+  checkSuspicionTimer();
   updateDisplayTime();
 }
 
@@ -3818,7 +3917,7 @@ async function autopilotBuyDrug() {
   const amt = parseInt((moneyItem||'').replace(/[^0-9]/g,''))||0;
 
   let drugToBuy = amt >= 20 ? 'pills' : 'weed';
-  let drugItem  = drugToBuy === 'pills' ? 'pain pills' : 'weed';
+  let drugItem  = drugToBuy === 'pills' ? 'percs' : 'weed';
   let cost      = drugToBuy === 'pills' ? 20 : 10;
 
   G.inventory = G.inventory.filter(i=>!i.includes('$'));
@@ -3869,11 +3968,12 @@ function getNearbyNPC() {
 
 // ── ILLEGAL ITEM DETECTION ────────────────────────────────────
 const ALWAYS_ILLEGAL_ITEMS = new Set([
-  'fentanyl','switch','suppressor','forged credentials','grenade','pipe bomb',
+  'fentanyl','switch','suppressor','forged credentials','grenade','pipe bomb','packaged fentanyl',
 ]);
 // Items that are illegal to carry without a prescription / in public
 const SOFT_ILLEGAL_ITEMS = new Set([
-  'weed','stimulants','pain pills',
+  'weed','speed','coke','crack','meth','percs',
+  'packaged weed','packaged speed','packaged coke','packaged crack','packaged meth','packaged percs',
 ]);
 
 function isIllegalItem(item) {
@@ -4538,6 +4638,15 @@ function snapshotNeeds() {
 // ═══════════════════════════════════════════════
 //  DRUG USE
 // ═══════════════════════════════════════════════
+// Percs (opiates) numb pain completely while active — full break mitigation.
+// OTC painkillers are the legal, weaker stopgap — half mitigation, no
+// prescription needed, no overdose risk, no craving relief either.
+function painMitigationTier() {
+  if (G.activeEffects.pills) return 'full';
+  if (G.painkillersActive > G.gameMinutes) return 'partial';
+  return 'none';
+}
+
 function useDrug(drugKey, itemName) {
   const def = DRUGS[drugKey];
   if (!def) { print(`You're not sure how to use that.`); return; }
@@ -4554,38 +4663,77 @@ function useDrug(drugKey, itemName) {
     return;
   }
 
-  // Opiate overdose check — 3 uses within a rolling window = overdose
-  // (not 3 uses ever; spacing them out is safe)
-  if (def.type === 'opiate_soft') {
-    const windowMins = def.odWindow || 240; // default 4-hour danger window
-    if (!G.flags.pillUseTimes) G.flags.pillUseTimes = [];
-    // Drop any uses outside the window
-    G.flags.pillUseTimes = G.flags.pillUseTimes.filter(t => G.gameMinutes - t < windowMins);
-    G.flags.pillUseTimes.push(G.gameMinutes);
-    logEvt('flag','pillUseTimes', JSON.stringify(G.flags.pillUseTimes));
+  // Overdose check — generalized across every drug that defines overdoseAt.
+  // Death-type (opiates, all four stimulants) vs blackout-type (alcohol) are
+  // resolved differently; spacing uses out safely avoids both.
+  if (def.overdoseAt) {
+    const windowMins = def.odWindow || 240;
+    if (!G.flags.drugODTimes) G.flags.drugODTimes = {};
+    if (!G.flags.drugODTimes[drugKey]) G.flags.drugODTimes[drugKey] = [];
+    G.flags.drugODTimes[drugKey] = G.flags.drugODTimes[drugKey].filter(t => G.gameMinutes - t < windowMins);
+    G.flags.drugODTimes[drugKey].push(G.gameMinutes);
+    logEvt('flag', 'drugODTimes_' + drugKey, JSON.stringify(G.flags.drugODTimes[drugKey]));
 
-    if (G.flags.pillUseTimes.length >= (def.overdoseAt||3)) {
+    if (G.flags.drugODTimes[drugKey].length >= def.overdoseAt) {
       const idx = G.inventory.indexOf(itemName);
       if (idx !== -1) G.inventory.splice(idx, 1);
+      logEvt('inventory_remove', itemName);
       updateStatus();
-      triggerDeath(false, 'opiate_od');
+      if (def.odType === 'blackout') {
+        triggerAlcoholBlackout();
+      } else {
+        triggerDeath(false, drugKey === 'pills' ? 'opiate_od' : `${drugKey}_od`);
+      }
       return;
     }
-    if (G.flags.pillUseTimes.length === (def.overdoseAt||3) - 1) {
-      print(`That's twice in a short window. One more right now and you won't wake up.`, 'failure');
+    if (G.flags.drugODTimes[drugKey].length === def.overdoseAt - 1) {
+      if (def.odType === 'blackout') {
+        print(`That's a lot, even for you tonight. One more and you're not going to remember how this ends.`, 'failure');
+      } else {
+        print(`That's twice in a short window. One more right now and you won't wake up.`, 'failure');
+      }
     }
   }
 
   // Apply craving reduction
   G.needs.craving = Math.max(0, G.needs.craving - def.cravingFix);
 
-  // Apply / extend active effect
+  // Apply / extend active effect, tracking a stack level (capped at 2) so
+  // redosing while still active can scale combat bonuses by up to 1.5x —
+  // additional uses beyond that keep refreshing needs/craving relief but
+  // add no further combat power.
   if (G.activeEffects[drugKey]) {
     G.activeEffects[drugKey].minutesLeft += def.duration * 0.5;
+    G.activeEffects[drugKey].stacks = Math.min(2, (G.activeEffects[drugKey].stacks || 1) + 1);
   } else {
-    G.activeEffects[drugKey] = { minutesLeft: def.duration };
+    G.activeEffects[drugKey] = { minutesLeft: def.duration, stacks: 1 };
   }
   logEvt('drug_active', drugKey, G.activeEffects[drugKey].minutesLeft);
+
+  // Crack/meth secondary-addiction creep — using either as a coping
+  // mechanism for the underlying opiate addiction can, on its own, start
+  // building a second concurrent habit. Tracked per-drug; clears itself if
+  // three full in-game days pass without a repeat use of that same drug.
+  if (drugKey === 'crack' || drugKey === 'meth') {
+    if (!G.flags.secondAddictionTimes) G.flags.secondAddictionTimes = {};
+    if (!G.flags.secondAddictionTimes[drugKey]) G.flags.secondAddictionTimes[drugKey] = [];
+    const saWindow = 3 * 24 * 60; // 3 game days
+    const before = G.flags.secondAddictionTimes[drugKey].filter(t => G.gameMinutes - t < saWindow).length;
+    G.flags.secondAddictionTimes[drugKey] = G.flags.secondAddictionTimes[drugKey]
+      .filter(t => G.gameMinutes - t < saWindow)
+      .slice(-10);
+    G.flags.secondAddictionTimes[drugKey].push(G.gameMinutes);
+    logEvt('flag', 'secondAddictionTimes_' + drugKey, JSON.stringify(G.flags.secondAddictionTimes[drugKey]));
+    const levelBefore = Math.min(2, Math.max(0, before - 1));
+    const levelAfter  = Math.min(2, Math.max(0, (before + 1) - 1));
+    if (levelAfter > levelBefore) {
+      if (levelAfter === 1) {
+        print(`Something about using this again so soon sits differently than it should.`, 'system');
+      } else {
+        print(`This isn't just a want anymore. Your body's started expecting it — same as the other thing.`, 'system');
+      }
+    }
+  }
 
   // Karma hit for using
   if (def.type === 'opiate_soft' || def.type === 'opiate_hard') adjustKarma(-12);
@@ -4608,7 +4756,10 @@ function useDrug(drugKey, itemName) {
     fentanyl:   '',
     pills:      `You swallow the pills. The edges of everything soften. The craving quiets.`,
     weed:       `You smoke. The world doesn't get better, but it gets quieter.`,
-    stimulants: `Your heart rate climbs. You feel sharp, or at least functional.`,
+    speed:      `Your heart rate climbs. You feel sharp, or at least functional, for a good long while.`,
+    coke:       `A short, sharp jolt of clarity. It's good. It's also already starting to fade.`,
+    crack:      `It hits immediately and completely — and it's already leaving before you've finished the thought.`,
+    meth:       `Everything gets very loud and very clear at the same time, and stays that way for a long time.`,
     alcohol:    itemName === 'moonshine'
       ? `Earl's shine. Goes down like engine degreaser. Works exactly as intended.`
       : `The beer goes down. The anxiety backs off, just a little.`,
@@ -5127,6 +5278,7 @@ function handleCommand(raw) {
     case 'unstash':   return cmdUnstash(obj);
     case 'saddlebag': return cmdBikeStorage(obj || trimmed);
     case 'rummage':   return cmdRummage();
+    case 'distribute': return cmdDistribute(obj || trimmed);
     // ── DEV/TEST ONLY — remove before final release ──
     case 'testfight':   if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdTestFight(obj);
     case 'devgive':     if (!G.flags.devMode) { print(`Keep your nose clean, boy.`); return; } return cmdDevGive(trimmed);
@@ -5844,16 +5996,18 @@ function cmdGo(raw, obj) {
   }
   // Get base move cost for this transition
   const baseCost = getMoveCost(prevLocation, destKey);
-  // Broken leg is a 1.5x multiplier (not a fixed value)
-  const painKillerOn = G.painkillersActive > G.gameMinutes;
-  const legBroken    = G.brokenLeg && !painKillerOn;
-  const legMult      = legBroken ? 1.5 : 1.0;
+  // Broken leg is a 1.5x multiplier (not a fixed value). Percs fully numb it;
+  // OTC painkillers only take the edge off.
+  const painTier = painMitigationTier();
+  const legBroken = !!G.brokenLeg && painTier !== 'full';
+  const legMult   = !G.brokenLeg ? 1.0 : (painTier === 'full' ? 1.0 : painTier === 'partial' ? 1.25 : 1.5);
   advanceTime(Math.floor(baseCost * legMult));
   if (legBroken && !G.isReplaying) {
     print(`Every step hurts. Your ${G.brokenLeg} leg slows you down.`,'failure');
   }
   printRoom(destKey);
   checkGangChaosAftermath();
+  checkPackagedDrugSuspicion();
   if (destKey === 'church' && !G.flags.churchVisited) {
     G.flags.churchVisited = true;
     adjustKarma(5);
@@ -6175,7 +6329,7 @@ function cmdUse(obj) {
 
   // OTC painkillers
   if (itemStr.includes('otc') || itemStr.includes('painkiller') ||
-      (itemStr.includes('pain') && itemStr.includes('pill') && !G.inventory.includes('pain pills'))) {
+      (itemStr.includes('pain') && itemStr.includes('pill') && !G.inventory.includes('percs'))) {
     if (!G.inventory.includes('otc painkillers')) { print(`You don't have any OTC painkillers.`); return; }
     const idx = G.inventory.indexOf('otc painkillers');
     G.inventory.splice(idx, 1);
@@ -8377,14 +8531,19 @@ function cmdStatus() {
   else if (G.bleed === 3) lines.push(`I'm bleeding badly. This is a problem.`);
 
   // Limb status
-  const painOn = G.painkillersActive > G.gameMinutes;
-  if (G.brokenArm && !painOn) {
+  const painOn = painMitigationTier() === 'full';
+  const painPartial = painMitigationTier() === 'partial';
+  if (G.brokenArm && !painOn && !painPartial) {
     lines.push(`My ${G.brokenArm} arm is broken. I need a doctor.`);
+  } else if (G.brokenArm && painPartial) {
+    lines.push(`My arm is broken but the OTC stuff is taking some of the edge off. I need a doctor.`);
   } else if (G.brokenArm && painOn) {
     lines.push(`My arm is broken but the painkillers are holding. I need a doctor.`);
   }
-  if (G.brokenLeg && !painOn) {
+  if (G.brokenLeg && !painOn && !painPartial) {
     lines.push(`My ${G.brokenLeg} leg is broken. Every step is wrong.`);
+  } else if (G.brokenLeg && painPartial) {
+    lines.push(`My leg is broken but the OTC stuff is helping a little. Still slow going.`);
   } else if (G.brokenLeg && painOn) {
     lines.push(`My leg is broken but I can walk on it for now. I need a doctor.`);
   }
@@ -9089,13 +9248,17 @@ function startMultiCombat(enemyDefs, allyDefs, playerInitiated, surprise=false) 
   print(pw0 === 'fists' ? `You raise your fists.` : `You pull out your ${displayWeaponName(pw0)}.`, 'system');
   printBlank();
 
-  if (!playerInitiated && !surprise) {
+  if (!playerInitiated && !surprise && !getDrugCombatMods().alwaysFirst) {
     // Enemy attacks first — they jumped you
     print(`They move first.`, 'system');
     printBlank();
     combatAllEnemyTurns();   // this prints status + options at the end
   } else {
-    // Player goes first (initiated it, or surprise attack on enemy)
+    if (!playerInitiated && !surprise) {
+      print(`Whatever's in your system right now, it's fast enough that you're moving before they are.`, 'system');
+      printBlank();
+    }
+    // Player goes first (initiated it, or surprise attack on enemy, or too wired to be caught flat-footed)
     printCombatOptions();
   }
 }
@@ -9194,7 +9357,7 @@ function printCombatOptions() {
   if (!combatState) return;
   combatMenuMode = 'root';
   const pw = getPlayerWeapon();
-  const painActive = G.painkillersActive > G.gameMinutes;
+  const painActive = painMitigationTier() === 'full';
   const armedLimb = (G.brokenArm && !painActive) ? ` [${G.brokenArm} arm broken]` : '';
 
   printCombatStatus();
@@ -9231,6 +9394,51 @@ function printCombatOptions() {
 }
 
 // ── COMBAT INPUT ────────────────────────────────────────────
+// ── USE ITEM MID-COMBAT ───────────────────────────────────────
+// Spends the round (allies/enemies still act afterward) just like an attack
+// would — healing or dosing instead of swinging is a real tradeoff, not a
+// free action. Returns true if something usable was found and consumed.
+function combatUseItem(itemStrRaw) {
+  if (!combatState) return false;
+  const itemStr = (itemStrRaw || '').toLowerCase().trim();
+
+  if ((itemStr.includes('bandage')) && G.inventory.includes('bandages')) {
+    const idx = G.inventory.indexOf('bandages');
+    G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', 'bandages');
+    combatState.playerHp = Math.min(100, combatState.playerHp + 15);
+    print(`You wrap the wound fast, mid-fight sloppy. It helps some. (+15 HP)`, 'system');
+    return true;
+  }
+  if ((itemStr.includes('first aid') || itemStr.includes('kit')) && G.inventory.includes('first aid kit')) {
+    const idx = G.inventory.indexOf('first aid kit');
+    G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', 'first aid kit');
+    combatState.playerHp = Math.min(100, combatState.playerHp + 35);
+    print(`You dig through the kit fast, get the worst of it patched. (+35 HP)`, 'system');
+    return true;
+  }
+  if ((itemStr.includes('otc') || itemStr.includes('painkiller')) && G.inventory.includes('otc painkillers')) {
+    const idx = G.inventory.indexOf('otc painkillers');
+    G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', 'otc painkillers');
+    G.painkillersActive = G.gameMinutes + 120;
+    logEvt('flag', 'painkillersActive', G.painkillersActive);
+    print(`You dry-swallow a handful. Won't heal anything, but you'll feel it less for a while.`, 'system');
+    return true;
+  }
+
+  // Drugs — same lookup handleCombatInput's non-combat cousin (cmdUse) uses
+  for (const [drugKey] of Object.entries(DRUGS)) {
+    const match = G.inventory.find(i => {
+      const mapped = ITEM_TO_DRUG[i];
+      return mapped === drugKey && (itemStr.includes(i) || itemStr.includes(drugKey) || i.includes(itemStr));
+    });
+    if (match) { useDrug(drugKey, match); return true; }
+  }
+  return false;
+}
+
 function handleCombatInput(raw) {
   if (!combatState) return false;
   const r = raw.toLowerCase().trim();
@@ -9246,22 +9454,54 @@ function handleCombatInput(raw) {
     cmdHelp(); return true;
   }
 
-  // Reload
+  // Reload — costs the round; fumbling with a mag mid-fight isn't free
   if (r.includes('reload') || r === 'rack slide') {
     const reloadArg = r.replace(/^reload\s*/, '').trim();
-    cmdReload(reloadArg); return true;
+    cmdReload(reloadArg);
+    if (combatState) {
+      combatState.bonusActionPending = false;
+      combatAllAllyTurns();
+      if (combatState) applyEnemyBleedTicks();
+      if (combatState) combatAllEnemyTurns();
+    }
+    return true;
   }
 
-  // Equip / switch weapon
+  // Equip / switch weapon — also costs the round, same reasoning
   if (r.startsWith('equip') || r.startsWith('wield') || r.startsWith('switch to') ||
       r.startsWith('switch weapon') || r.startsWith('draw') || r.startsWith('ready')) {
     const obj = r.replace(/^(equip|wield|switch to|switch weapon|draw|ready)\s*/,'').trim();
-    cmdEquip(obj); return true;
+    cmdEquip(obj);
+    if (combatState) {
+      combatState.bonusActionPending = false;
+      combatAllAllyTurns();
+      if (combatState) applyEnemyBleedTicks();
+      if (combatState) combatAllEnemyTurns();
+    }
+    return true;
   }
 
   // Flee
   if (r === 'run' || r === 'flee' || r === 'escape' || r === 'run away') {
     combatFlee(); return true;
+  }
+
+  // Use item (heal / dose) — spends the round, same as an attack would
+  if (r.startsWith('use ') || r.startsWith('apply ') || r.startsWith('take ') ||
+      r.startsWith('drink ') || r.startsWith('eat ') || r.startsWith('swallow ') ||
+      r.startsWith('bandage') || r.startsWith('smoke ') || r.startsWith('inject ') ||
+      r.startsWith('snort ') || r.startsWith('pop ')) {
+    const obj = r.replace(/^(use|apply|take|drink|eat|swallow|bandage|smoke|inject|snort|pop)\s*/, '').trim();
+    const usedSomething = combatUseItem(obj || r);
+    if (usedSomething) {
+      combatState.bonusActionPending = false;
+      combatAllAllyTurns();
+      if (combatState) applyEnemyBleedTicks();
+      if (combatState) combatAllEnemyTurns();
+      return true;
+    }
+    print(`You don't have that, or it's not something you can use right now.`, 'system');
+    return true;
   }
 
   // Target selection (multi-enemy fights): "target 1", "target 2", "target carlos", etc.
@@ -9320,9 +9560,9 @@ const BUCKSHOT_ZONE_WEIGHTS = [
   ['left_leg', 0.08], ['right_leg', 0.08], ['head', 0.05],
 ]; // sums to 0.92 — remaining 8% of connecting pellets covered by rounding/miss margin
 function resolveBuckshotAttack(e, pDef) {
-  const painActive = G.painkillersActive > G.gameMinutes;
-  const weaponArmBroken = (G.brokenArm === 'right' || G.brokenArm === 'both') && !painActive;
-  const pAccMult = weaponArmBroken ? 0.5 : 1.0;
+  const armIsBroken = (G.brokenArm === 'right' || G.brokenArm === 'both');
+  const painTier = painMitigationTier();
+  const pAccMult = !armIsBroken ? 1.0 : (painTier === 'full' ? 1.0 : painTier === 'partial' ? 0.75 : 0.5);
   const cravingPenalty = G.needs.craving >= 75 ? 0.80 : G.needs.craving >= 50 ? 0.90 : 1.0;
   const needDeb = getNeedDebuffs();
   const eDodge = getNpcDodgeBonus(e);
@@ -9374,8 +9614,47 @@ function resolveBuckshotAttack(e, pDef) {
   }
 }
 
+// Combat-relevant modifiers from active drug effects. Stimulants scale in
+// intensity with how hard the drug is (speed < coke < crack < meth); weed and
+// alcohol both cost accuracy; opiates (and meth's mild pain-numbing edge)
+// affect incoming damage. Redosing while a drug is still active can scale
+// its combat bonus/penalty by up to 1.5x (capped at 2 stacks) — further
+// redoses beyond that keep refreshing needs/craving relief but add no more
+// combat power, win or lose.
+function getDrugCombatMods() {
+  let outAcc = 1.0, outDmg = 1.0, inDmg = 1.0, alwaysFirst = false, extraAttackChance = 0;
+  const stackMult = (key) => (G.activeEffects[key] && G.activeEffects[key].stacks >= 2) ? 1.5 : 1.0;
+  const scaled = (base, mult) => 1 + (base - 1) * mult; // scale the delta from 1.0, not the raw value
+
+  if (G.activeEffects.weed)    outAcc *= scaled(0.85, stackMult('weed'));
+  if (G.activeEffects.alcohol) outAcc *= scaled(0.85, stackMult('alcohol'));
+  if (G.activeEffects.speed) {
+    const m = stackMult('speed');
+    outAcc *= scaled(1.10, m); alwaysFirst = true; extraAttackChance = Math.max(extraAttackChance, 0.5);
+  }
+  if (G.activeEffects.coke) {
+    const m = stackMult('coke');
+    outAcc *= scaled(1.15, m); outDmg *= scaled(1.05, m); alwaysFirst = true; extraAttackChance = Math.max(extraAttackChance, 0.5);
+  }
+  if (G.activeEffects.crack) {
+    const m = stackMult('crack');
+    outAcc *= scaled(1.20, m); outDmg *= scaled(1.10, m); alwaysFirst = true; extraAttackChance = Math.max(extraAttackChance, 0.5);
+  }
+  if (G.activeEffects.meth) {
+    const m = stackMult('meth');
+    outAcc *= scaled(1.25, m); outDmg *= scaled(1.15, m); inDmg *= scaled(0.95, m);
+    alwaysFirst = true; extraAttackChance = Math.max(extraAttackChance, 0.5);
+  }
+  if (G.activeEffects.pills || G.activeEffects.fentanyl) {
+    inDmg *= scaled(0.75, stackMult('pills'));
+  }
+  return { outAcc, outDmg, inDmg, alwaysFirst, extraAttackChance };
+}
+
 function combatRound(playerTarget) {
   if (!combatState) return;
+  const resolvingBonus = !!combatState.bonusActionPending;
+  if (resolvingBonus) combatState.bonusActionPending = false;
   combatState.rounds++;
   const pw  = getPlayerWeapon();
   const pDef = weaponDef(pw);
@@ -9437,17 +9716,18 @@ function combatRound(playerTarget) {
   }
 
   // ── PLAYER ATTACKS ──
-  const painActive = G.painkillersActive > G.gameMinutes;
-  const weaponArmBroken = (G.brokenArm === 'right' || G.brokenArm === 'both') && !painActive;
-  const pAccMult = weaponArmBroken ? 0.5 : 1.0;
-  const pDmgMult = weaponArmBroken ? 0.6 : 1.0;
+  const armIsBroken = (G.brokenArm === 'right' || G.brokenArm === 'both');
+  const painTier2 = painMitigationTier();
+  const pAccMult = !armIsBroken ? 1.0 : (painTier2 === 'full' ? 1.0 : painTier2 === 'partial' ? 0.75 : 0.5);
+  const pDmgMult = !armIsBroken ? 1.0 : (painTier2 === 'full' ? 1.0 : painTier2 === 'partial' ? 0.8  : 0.6);
   const cravingPenalty = G.needs.craving >= 75 ? 0.80
                        : G.needs.craving >= 50 ? 0.90
                        : 1.0;
   const eDodge = getNpcDodgeBonus(e);
   const needDeb = getNeedDebuffs();
+  const drugMods = getDrugCombatMods();
   const zoneAccMult = (pDef.zoneAccuracyMult && pDef.zoneAccuracyMult[playerTarget]) || 1.0;
-  const pAcc = Math.max(0, pDef.accuracy * tMod.accuracyMult * zoneAccMult * pAccMult * cravingPenalty * needDeb.outAcc - eDodge);
+  const pAcc = Math.max(0, pDef.accuracy * tMod.accuracyMult * zoneAccMult * pAccMult * cravingPenalty * needDeb.outAcc * drugMods.outAcc - eDodge);
 
   const shotCount = pDef.multiShot || 1;
   const isBurst = shotCount > 1;
@@ -9472,7 +9752,7 @@ function combatRound(playerTarget) {
         armorRed *= (1 - AP_ARMOR_IGNORE); // AP rounds punch through most of what armor would normally stop
       }
       const armorMult = 1.0 - armorRed;
-      const scaledDmg = Math.floor(dmg * tMod.damageMult * pDmgMult * armorMult * needDeb.outDmg);
+      const scaledDmg = Math.floor(dmg * tMod.damageMult * pDmgMult * armorMult * needDeb.outDmg * drugMods.outDmg);
       e.hp = Math.max(0, e.hp - scaledDmg);
       e.lastHitZone = playerTarget;
 
@@ -9522,6 +9802,22 @@ function combatRound(playerTarget) {
       break;
     }
   }
+
+  // ── STIMULANT BONUS ACTION — a genuine extra move, not a scripted swing ──
+  // Roughly one bonus round every two turns. The player gets a real second
+  // input: attack again (same or different target/weapon), reload, switch
+  // weapons, use a heal, even try to flee — anything handleCombatInput
+  // supports. Only grants once per round (resolvingBonus guards re-granting
+  // while the bonus action itself is being resolved).
+  if (combatState && !resolvingBonus && drugMods.extraAttackChance > 0 &&
+      combatState.enemies.length > 0 && Math.random() < drugMods.extraAttackChance) {
+    print(`Your heart's still hammering — everything's still moving in fast-forward. You've got time for one more move before this round is over.`, 'system');
+    printBlank();
+    combatState.bonusActionPending = true;
+    printCombatOptions();
+    return;
+  }
+  if (!combatState) return;
 
   // ── ALLY TURNS ──
   combatAllAllyTurns();
@@ -9706,11 +10002,10 @@ function combatEnemyTurn(e) {
     const eHits = Math.random() < eAcc;
     if (eHits) {
       const eDmg = Math.floor(eDef.damage[0] + Math.random() * (eDef.damage[1] - eDef.damage[0]));
-      const onOpiates = G.activeEffects['pills'] || G.activeEffects['fentanyl'];
-      const opiateMult = onOpiates ? 0.75 : 1.0;
+      const drugModsIn = getDrugCombatMods();
       const armorMult  = 1.0 - getArmorReduction(eTarg);
       const needDebIn  = getNeedDebuffs().inDmg;
-      const eScaled    = Math.floor(eDmg * eMod.damageMult * opiateMult * armorMult * needDebIn);
+      const eScaled    = Math.floor(eDmg * eMod.damageMult * drugModsIn.inDmg * armorMult * needDebIn);
       combatState.playerHp = Math.max(0, combatState.playerHp - eScaled);
 
       // Bleed
@@ -10607,6 +10902,54 @@ async function combatEnd(result) {
   }
 }
 
+// Alcohol overdose — not lethal like the hard-drug OD path. You black out,
+// lose a chunk of time, and wake up somewhere you didn't choose, possibly
+// lighter on cash or a random item.
+async function triggerAlcoholBlackout() {
+  print(`The room doesn't so much spin as just... stop being consistent.`, 'narration');
+  await sleep(700);
+  printBlank();
+  print(`...`, 'system');
+  await sleep(900);
+  printBlank();
+
+  const spots = ['park', 'alley', 'downtown', 'district', 'bus_stop_downtown', 'bus_stop_district', 'cemetery', 'woods'];
+  const dest = spots[Math.floor(Math.random() * spots.length)];
+
+  advanceTime(6 * 60); // 6 hours, lost
+  G.location = dest;
+  logEvt('location', dest);
+
+  print(`You surface somewhere you don't remember choosing.`, 'narration');
+
+  let lostSomething = false;
+  if (Math.random() < 0.5) {
+    const cash = playerCashTotal();
+    if (cash > 0) {
+      const lost = Math.min(cash, 10 + Math.floor(Math.random() * 40));
+      if (lost > 0) {
+        spendCash(lost);
+        print(`Your wallet's lighter by $${lost}. No memory of how, or on what.`, 'failure');
+        lostSomething = true;
+      }
+    }
+  } else if (G.inventory && G.inventory.length) {
+    const idx = Math.floor(Math.random() * G.inventory.length);
+    const lostItem = G.inventory[idx];
+    G.inventory.splice(idx, 1);
+    logEvt('inventory_remove', lostItem);
+    print(`You're also missing your ${lostItem}. You choose not to speculate.`, 'failure');
+    lostSomething = true;
+  }
+  if (!lostSomething) {
+    print(`Somehow, everything's still on you. Small mercies.`);
+  }
+
+  printBlank();
+  printRoom(dest, true);
+  updateStatus();
+}
+
 // Default non-lethal combat defeat — wake up at the clinic a day later, owing money.
 async function runClinicRecovery() {
   print(`Everything goes dark before you can process what just happened.`, 'narration');
@@ -11433,7 +11776,7 @@ function cmdDevListItem() {
   const ITEM_ALIASES = {
     'blok19': ['gun','pistol','blok19','blok-19'], 'baseball bat': ['bat'],
     'pocket knife': ['knife'], 'cheap watch': ['watch'],
-    'pain pills': ['pills'], 'otc painkillers': ['painkillers'],
+    'percs': ['pills','percocet','pain pills'], 'otc painkillers': ['painkillers'],
     'water bottle': ['water'], 'energy drink': ['energy drink'],
     'fishing rod': ['rod'], 'small box of 9mm': ['ammo','9mm'],
     'large box of 9mm': ['ammo','9mm'], 'granola bar': ['granola'],
@@ -14098,6 +14441,45 @@ function checkRivalCombatOutcome() {
   print(`Back at the trap house, Chuy already seems to know. "Good," is all he says at first. Then: "Alright. You're not just some guy off the street anymore." He pulls out a phone, taps something out. "La Señora's gonna want to meet you. Club Fenix. Don't be stupid about how you dress."`, 'special');
 }
 
+const PACKAGED_DRUGS = ['packaged weed','packaged percs','packaged speed','packaged coke','packaged crack','packaged meth','packaged fentanyl'];
+
+// Carrying a bulk packaged drug item is its own quiet risk — a slower,
+// randomized cousin of the witness timer rather than a guaranteed event.
+function checkPackagedDrugSuspicion() {
+  if (G.gameOver || combatState) return;
+  if (!PACKAGED_DRUGS.some(d => G.inventory.includes(d))) return;
+  if (G.flags.suspicionTimer) return; // already under active suspicion, don't stack another
+  if (Math.random() < 0.12) {
+    illegalAct('suspicious behavior', 6 + Math.floor(Math.random() * 5));
+    if (!G.isReplaying) print(`Someone gave you a look a beat too long back there. Probably nothing.`, 'system');
+    if (Math.random() < 0.18) {
+      const baseMinutes = 25 + Math.floor(Math.random() * 11); // 25-35 min — slower than the witness timer
+      G.flags.suspicionTimer = G.gameMinutes + baseMinutes;
+      G.flags.suspicionLocation = G.location;
+      logEvt('flag', 'suspicionTimer', G.flags.suspicionTimer);
+      logEvt('flag', 'suspicionLocation', G.flags.suspicionLocation);
+      if (!G.isReplaying) print(`Someone's on the phone across the street, watching you a little too closely while they talk.`, 'failure');
+    }
+  }
+}
+
+// Called from advanceTime — mirrors checkWitnessTimer's shape
+function checkSuspicionTimer() {
+  if (!G.flags.suspicionTimer || G.gameOver || combatState) return;
+  if (G.gameMinutes < G.flags.suspicionTimer) return;
+  const stillThere = G.location === G.flags.suspicionLocation;
+  delete G.flags.suspicionTimer;
+  delete G.flags.suspicionLocation;
+  logEvt('flag', 'suspicionTimer', 'null');
+  logEvt('flag', 'suspicionLocation', 'null');
+  if (!stillThere) return; // moved on — call went nowhere
+  if (!G.isReplaying) {
+    print(`Whoever made that call, it worked.`, 'failure');
+    print(`A cruiser rolls up slow, like they already know what they're going to find.`, 'failure');
+  }
+  triggerArrest('possession with intent to distribute');
+}
+
 // ═══════════════════════════════════════════════
 //  GANG ROUTE — TIER 1
 // ═══════════════════════════════════════════════
@@ -14194,16 +14576,27 @@ function gangOfferJob2() {
   print(`"Next thing is heavier," La Señora says. "Real weight, moving from here to the District. Chuy's little errands, this is not."`);
   print(`Dennis, from behind her, adds nothing out loud, but he's watching you get told this, which feels like its own kind of evaluation.`, 'special');
   openDialogue('la_senora', null, [
-    { label: "Make the run", action: () => gangRunJob2() },
+    { label: "Take the package and make the run", action: () => gangRunJob2() },
     { label: "Not right now", action: () => print(`"It'll wait," La Señora says. "Not forever."`) },
   ]);
 }
 
 async function gangRunJob2() {
+  if (!canCarry('packaged speed')) { printCarryWarning('packaged speed'); return; }
+  G.inventory.push('packaged speed');
+  logEvt('inventory_add', 'packaged speed');
+  addMultiUseContainer('packaged speed');
+  print(`Dennis hands over a package with real weight to it — speed, not the operation's actual crown jewel, but a lot more than Chuy ever trusted you with. "District. You know the address. Don't stop to talk to anyone."`, 'narration');
+  await sleep(500);
   print(`The route runs closer to the District than anything Chuy ever had you carrying — closer to the courthouse, closer to actual patrols. You keep to side streets and it still feels too visible.`, 'narration');
   await sleep(600);
+  checkPackagedDrugSuspicion();
+  if (G.gameOver) return;
   print(`Nobody stops you. That doesn't make it feel safe, exactly, just survived.`, 'narration');
   illegalAct('drug trafficking', 18);
+  delete G.itemCharges['packaged speed'];
+  G.inventory = G.inventory.filter(i => i !== 'packaged speed');
+  logEvt('inventory_remove', 'packaged speed');
   const pay = 90;
   receiveCash(pay);
   G.flags.gangJob2Done = true;
@@ -14291,16 +14684,50 @@ function gangJob3PathBMenu() {
   openDialogue('la_senora', `Getting a live case to just vanish is a much bigger ask than getting them to look elsewhere.`, opts);
 }
 
-// ── Absurd Path A3 — homeless camp chaos ─────────────────────
-function gangJob3ChaosSetup() {
-  print(`You go back to Chuy first. Ask for an amount of amphetamines that should raise questions. It doesn't. "For La Señora," you say, and that's the whole conversation.`, 'narration');
-  print(`Then Sneed's, for a bulk hammer order. "Community development project," you tell him. He shrugs and rings it up.`, 'narration');
-  if (playerCashTotal() < 180) {
-    print(`...except you don't have $180 for the hammers. Come back when you do.`, 'failure');
+// ── DISTRIBUTE — homeless camp chaos job (hammers + speed) ──
+function cmdDistribute(obj) {
+  if (G.location !== 'homeless_camp') {
+    print(`There's nobody here to distribute anything to.`); return;
+  }
+  if (!G.inventory.includes('box of hammers') || !G.inventory.includes('packaged speed')) {
+    print(`You don't have anything worth handing out. You'd need both a box of hammers and a package of speed.`);
     return;
   }
-  spendCash(180);
-  print(`Out to the homeless camp. You hand out amphetamines and hammers like party favors. Nobody asks why. Nobody ever asks why, out here.`, 'narration');
+  if (G.flags.gangJob3ChaosSeeded) {
+    print(`You're already out — handed off everything last time you were here.`);
+    return;
+  }
+
+  G.flags.gangChaosDistributionCount = (G.flags.gangChaosDistributionCount || 0) + 1;
+  const n = G.flags.gangChaosDistributionCount;
+  logEvt('flag', 'gangChaosDistributionCount', n);
+
+  if (n < 4) {
+    useMultiUseCharge('box of hammers');
+    useMultiUseCharge('packaged speed');
+    const lines = [
+      `You hand a hammer and a little baggie to a guy sitting near the fire pit. He looks at both items like Christmas came early and asks no follow-up questions.`,
+      `A woman near the tents takes what you're offering without much comment beyond a flat "...thanks?" and wanders off with it.`,
+      `Someone you don't recognize takes the hammer first, then the speed, then looks at you like you might be the most interesting person they've met all week.`,
+    ];
+    print(lines[Math.floor(Math.random() * lines.length)], 'narration');
+    print(`[ You could keep going, or use "distribute" again. ]`, 'system');
+    updateStatus();
+    return;
+  }
+
+  // 4th interaction — dump the rest on the last guy and abstract the remainder
+  print(`One more guy wanders up, hopeful. You look at how much you're still carrying, do some quick math on how long this would actually take one hammer at a time, and just hand him everything.`, 'narration');
+  print(`"Here's the rest of my inventory," you tell him. "Now you make sure you share, okay?"`, 'special');
+  print(`He nods with the total confidence of a man who has never shared anything in his life.`, 'narration');
+
+  // Empty both containers entirely regardless of remaining charges
+  delete G.itemCharges['box of hammers'];
+  delete G.itemCharges['packaged speed'];
+  G.inventory = G.inventory.filter(i => i !== 'box of hammers' && i !== 'packaged speed');
+  logEvt('inventory_remove', 'box of hammers');
+  logEvt('inventory_remove', 'packaged speed');
+
   G.flags.gangJob3ChaosSeeded = true;
   G.flags.gangJob3ChaosSeededAt = G.gameMinutes;
   logEvt('flag', 'gangJob3ChaosSeeded', true);
@@ -14308,6 +14735,23 @@ function gangJob3ChaosSetup() {
   printBlank();
   print(`[ Give it a day. Then check the park or the police station. ]`, 'system');
   updateStatus();
+}
+
+// ── Absurd Path A3 — homeless camp chaos ─────────────────────
+function gangJob3ChaosSetup() {
+  if (!G.inventory.includes('packaged speed')) {
+    if (!canCarry('packaged speed')) { printCarryWarning('packaged speed'); return; }
+    print(`You go back to Chuy first, and ask for an amount of speed that should raise questions. It doesn't. "For La Señora," you say, and that's the whole conversation. He hands over a package with real weight to it.`, 'narration');
+    G.inventory.push('packaged speed');
+    logEvt('inventory_add', 'packaged speed');
+    addMultiUseContainer('packaged speed');
+  }
+  if (!G.inventory.includes('box of hammers')) {
+    print(`Now you just need the hammers. Sneed's got a bulk order line — "box of hammers," $180, no questions if you frame it right.`, 'system');
+    print(`[ Buy a "box of hammers" from Sneed, then come back and use "distribute" at the homeless camp. ]`, 'system');
+    return;
+  }
+  print(`You've got everything you need. Head to the homeless camp and use "distribute" to start handing things out.`, 'system');
 }
 
 // Called when player visits park or police_station after chaos was seeded
@@ -14562,8 +15006,8 @@ function pokeCat() {
 
 // Items each NPC type carries
 const NPC_LOOT = {
-  alley_dealer:       { always: ['$15','weed'],           random: [['pain pills',0.5],['lighter',0.7]] },
-  chuy:               { always: ['$25','pain pills'],     random: [['stimulants',0.4],['pocket knife',0.5]] },
+  alley_dealer:       { always: ['$15','weed'],           random: [['percs',0.5],['lighter',0.7]] },
+  chuy:               { always: ['$25','percs'],          random: [['speed',0.4],['pocket knife',0.5]] },
   la_senora:          { always: ['$80'],                  random: [['blok19',0.3],['flask',0.6]] },
   dennis:             { always: ['$20'],                  random: [['pocket knife',0.5]] },
   big_enforcer:       { always: ['$15','brass knuckles'], random: [] },
@@ -15118,7 +15562,7 @@ function startGame() {
       ...Array(5).fill('large box of 9mm'), // 5 boxes, 100 rounds each = 500 total
       ...Array(100).fill('jerky'),
       ...Array(100).fill('water bottle'),
-      ...Array(100).fill('pain pills'),
+      ...Array(100).fill('percs'),
     ];
     // Populate charge stacks for multi-use items so they behave correctly
     G.itemCharges = {
@@ -15139,7 +15583,7 @@ function startGame() {
     printBlank();
     print(`You wake up on the floor of your apartment, suspiciously well-equipped for someone in your situation.`);
     print(`$1000 in your pocket. A watch. A laptop. A fishing rod. A Blok-19 loaded and ready. A bat. A knife.`);
-    print(`100 tins of worms. 5 large boxes of 9mm (500 rounds total). 100 jerky. 100 water bottles. 100 pain pills.`);
+    print(`100 tins of worms. 5 large boxes of 9mm (500 rounds total). 100 jerky. 100 water bottles. 100 percs.`);
     printBlank();
     print(`This is not how the story usually starts.`,'system');
     printBlank();
@@ -15507,7 +15951,7 @@ const DEV_GIVE_CATEGORIES = {
   'Drink': ['coffee','bad coffee','water bottle','energy drink','beer','moonshine'],
   'Fishing': ['fishing rod',"Jeremy's rod","Jeremy's rig",'worms','cricket bait','stink bait','cut bait',
     'common fish','mutant catfish','strange eel','eyeless trout','purple sunfish','whispering gar'],
-  'Drugs & Medical': ['pain pills','weed','stimulants','fentanyl','bandages','antiseptic','first aid kit','otc painkillers'],
+  'Drugs & Medical': ['percs','weed','speed','coke','crack','meth','fentanyl','bandages','antiseptic','first aid kit','otc painkillers'],
   'Bags': ['backpack','duffel bag'],
   'Quest Items': ['dr_whitfield_badge','lab coat','clipboard','forged credentials','tin foil badge',
     'warrant','laptop','carburetor','drive chain','battery'],
