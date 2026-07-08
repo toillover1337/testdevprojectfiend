@@ -251,6 +251,14 @@
     flex-wrap: wrap;
     flex-shrink: 0;
   }
+  #static-btns {
+    justify-content: space-between;
+  }
+  .qbtn-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
   .qbtn {
     background: none;
     border: 1px solid var(--gray);
@@ -472,15 +480,19 @@
   </div>
   <div id="output"></div>
   <div class="quick-btns" id="static-btns">
-    <button class="qbtn" onclick="quickCmd('look')">look</button>
-    <button class="qbtn" onclick="quickCmd('exit')">exit</button>
-    <button class="qbtn" onclick="quickCmd('where')">where</button>
-    <button class="qbtn" onclick="quickCmd('status')">status</button>
-    <button class="qbtn" onclick="quickCmd('inventory')">inventory</button>
-    <button class="qbtn" onclick="openCommandsModal()">commands</button>
-    <button class="qbtn" onclick="quickCmd('history')">save</button>
-    <button class="qbtn" onclick="quickCmd('help')">help</button>
-    <button class="qbtn qbtn-warn" onclick="confirmExitToMenu()">exit to menu</button>
+    <div class="qbtn-group" id="static-btns-left">
+      <button class="qbtn" onclick="quickCmd('look')">look</button>
+      <button class="qbtn" onclick="quickCmd('exit')">exit</button>
+      <button class="qbtn" onclick="quickCmd('where')">where</button>
+      <button class="qbtn" onclick="quickCmd('status')">status</button>
+      <button class="qbtn" onclick="quickCmd('inventory')">inventory</button>
+      <button class="qbtn" onclick="openCommandsModal()">commands</button>
+    </div>
+    <div class="qbtn-group" id="static-btns-right">
+      <button class="qbtn" onclick="quickCmd('history')">save</button>
+      <button class="qbtn" onclick="quickCmd('help')">help</button>
+      <button class="qbtn qbtn-warn" onclick="confirmExitToMenu()">exit to menu</button>
+    </div>
   </div>
   <div class="quick-btns" id="context-btns"></div>
   <div id="input-area">
@@ -984,6 +996,7 @@ the laundromat, and the motel. A guy named Gerald sits on the bench near the cor
 ${G.flags.hasCar ? 'Your motorbike is parked nearby.' : 'The bus stop is on the corner.'}
 A few blocks away is the District — the park, the church, the nightclub, and the civic buildings are over there.
 The sticks are accessible by bus. Your apartment building is next to the diner.
+${G.flags.knowsTrapHouse ? 'Hendrix Street is a few blocks over — the rough dead end you know as Chuy\'s turf now.' : 'There\'s a rougher block a few streets over that you make a point of avoiding.'}
 ${trashBinDesc('downtown')}
 ${getParkingFlavor('downtown')}`,
     exits: {
@@ -991,7 +1004,7 @@ ${getParkingFlavor('downtown')}`,
       alley: 'alley', gas_station: 'gas_station',
       pawn_shop: 'pawn_shop', bar: 'bar',
       pharmacy: 'pharmacy', laundromat: 'laundromat',
-      motel: 'motel',
+      motel: 'motel', trap_house: 'trap_house_outside',
       district: 'district', bus_stop: 'bus_stop_downtown',
     },
     items: [], npcs: ['bench_man'],
@@ -1069,6 +1082,7 @@ ${getRoomParkingFlavor('park')}`,
     firstVisit: true, safeSleep: false, safeBathroom: true,
     desc: () => `A gas station that treats gas as an afterthought. Marcus is behind the counter
 watching something on his phone and would prefer not to be looked at.
+${getRoomParkingFlavor('downtown')}
 ${trashBinDesc('gas_station')}`,
     exits: { north: 'downtown' },
     items: ['scratch ticket','energy drink'], npcs: ['marcus'],
@@ -1287,6 +1301,7 @@ than the government takes Los Ciegos. One courtroom, one clerk's office, a hallw
 water fountain that runs warm. The clerk is at the desk with the expression of someone who
 has read everything in this building twice and found it wanting.
 A small records window is set into the wall next to the desk.
+${getRoomParkingFlavor('courthouse')}
 ${G.flags.communeFlag ? 'The plaque outside has your name on it.' : ''}
 ${G.flags.bustInvestigationStarted && !G.flags.evidence_financial && !G.flags.bustReady ? `\nThe clerk looks like the type who'd pull a business filing for the right "processing fee."` : ''}`,
     exits: {}, items: [], npcs: ['courthouse_clerk'],
@@ -1819,7 +1834,7 @@ const ITEM_DESC = {
   'packaged fentanyl':  "A tightly wrapped bulk supply of fentanyl, way more than any one person needs. Built for moving, not using. Carrying this around is its own kind of risk.",
   'grenade':            "A real military-surplus grenade. Heavier than it looks, and every part of you knows you shouldn't be holding it. Absurdly overkill for anything short of a real problem.",
   'pipe bomb':          "A length of pipe, capped on both ends, wired to something that ticks in your imagination even though it obviously isn't ticking. Homemade. That's not reassuring.",
-  'phone':              'Your phone. Cracked screen, questionable battery life, occasionally rings with bad news.',
+  'phone':              "A simple prepaid flip phone. Basic camera, basic everything. The case is cracked and one of the hinges is looser than it should be, but it still works — except the clock, which has been wrong for as long as you can remember and shows no sign of fixing itself.",
   "Hed's gift":         "A small wrapped box, taped a little too carefully. Needs to get to the post office.",
   'old magneto':        "A dense, greasy chunk of metal and copper wire. No idea what it's for, but it feels like it was built to last, and somebody clearly cared about it once.",
   'jar of moonshine':   "A mason jar sealed with wax. Earl's, meant for Rosario specifically. Best not to open it yourself.",
@@ -2609,6 +2624,7 @@ function buildShopStock() {
       entry.randomChance === undefined || Math.random() < entry.randomChance
     );
   }
+  logEvt('flag', 'shopStock', JSON.stringify(G.shopStock));
 }
 
 // Re-roll only the randomChance items for a single shop, preserving always-stock entries.
@@ -2622,6 +2638,7 @@ function restockShop(npcKey) {
   G.shopStock[npcKey] = shop.sells.filter(entry =>
     entry.randomChance === undefined || Math.random() < entry.randomChance
   );
+  logEvt('flag', 'shopStock', JSON.stringify(G.shopStock));
 }
 
 // ═══════════════════════════════════════════════
@@ -4502,11 +4519,33 @@ function logEvt(key, ...args) {
   G.eventLog.push({ type: 'EVT', data: [key, ...args].join(' ') });
 }
 
+// Queue of historical random values, pre-populated from the save log before
+// replay starts. rrand() drains it in order so consequential rolls (combat
+// hit/miss/damage/lethal, limb breaks, flee chance, etc.) reproduce exactly
+// instead of being re-rolled — which could otherwise kill the player in a
+// replay that they survived the first time, or resurrect someone who died.
+let replayRngQueue = [];
+
+function rrand() {
+  if (G.isReplaying && replayRngQueue.length) {
+    const v = replayRngQueue.shift();
+    logEvt('rng', v);
+    return v;
+  }
+  const v = Math.random();
+  logEvt('rng', v.toFixed(6));
+  return v;
+}
+
 // Apply a single EVT line to G state (used during replay)
 function applyEvt(data) {
   const parts = data.split(' ');
   const key   = parts[0];
   switch(key) {
+    case 'rng':
+      // Consumed via the pre-scan queue in replayCommands, not here —
+      // nothing to do on a second encounter.
+      break;
     case 'time':
       G.gameMinutes += parseInt(parts[1])||0;
       break;
@@ -4580,6 +4619,7 @@ function applyEvt(data) {
       }
       // playerHp, bleed, etc stored as flags
       if (flagKey === 'playerHp')        { G.playerHp = parseFloat(flagVal); break; }
+      if (flagKey === 'gameMinutes')     { G.gameMinutes = parseFloat(flagVal); break; }
       if (flagKey === 'bleed')           { G.bleed = parseInt(flagVal); break; }
       if (flagKey === 'brokenArm')       { G.brokenArm = flagVal === 'null' ? null : flagVal; break; }
       if (flagKey === 'brokenLeg')       { G.brokenLeg = flagVal === 'null' ? null : flagVal; break; }
@@ -4598,7 +4638,7 @@ function applyEvt(data) {
         break;
       }
       // Top-level G properties (not G.flags) that get JSON-encoded
-      if (['aliases','savedCmds','floorItems','trashTossedItems','trashTossedAt'].includes(flagKey)) {
+      if (['aliases','savedCmds','floorItems','trashTossedItems','trashTossedAt','shopStock'].includes(flagKey)) {
         try { G[flagKey] = JSON.parse(flagVal); } catch(e) { /* leave as-is on parse failure */ }
         break;
       }
@@ -5534,11 +5574,12 @@ function cmdLook(obj) {
 
   // Police route — look at the illegally parked car at this location
   if (obj.includes('car') || obj.includes('truck') || obj.includes('sedan') || obj.includes('squad') || obj.includes('vehicle')) {
-    if (TICKET_LOCATIONS.includes(G.location) && TICKET_DETAILS[G.location]) {
-      if (G.flags[`ticketed_${G.location}`]) {
+    const ticketKey = ticketAliasFor(G.location);
+    if (TICKET_LOCATIONS.includes(ticketKey) && TICKET_DETAILS[ticketKey]) {
+      if (G.flags[`ticketed_${ticketKey}`]) {
         print(`Already ticketed that one.`);
       } else {
-        print(TICKET_DETAILS[G.location]);
+        print(TICKET_DETAILS[ticketKey]);
         if (G.flags.policeMissionActive === 'tickets') {
           print(`[ "ticket" to write it up ]`, 'system');
         }
@@ -5611,15 +5652,15 @@ function cmdLook(obj) {
 function cmdLookAtOwnedItem(item) {
   // Watch — show current game time
   if (item === 'cheap watch' || item === 'watch') {
-    print(`You glance at your watch. It is ${formatTime(G.displayTime)}.`);
-    if (G.startDate) print(`${formatDate()}.`, 'system');
+    print(`A basic digital watch, plastic band, cracked face but still working. It shows the time and the date.`);
+    print(`You glance at your watch. It's ${formatTime(G.displayTime)}${G.startDate ? ` on ${formatDate()}` : ''}.`);
     return;
   }
 
-  // Phone — also shows the time, plus whatever debt situation you're in
+  // Phone — busted flip phone, clock's broken, so it does NOT give the time.
+  // Still useful for whatever debt situation you're in.
   if (item === 'phone') {
-    print(`You check your phone. It is ${formatTime(G.displayTime)}.`);
-    if (G.startDate) print(`${formatDate()}.`, 'system');
+    print(ITEM_DESC['phone']);
     if (G.flags.clinicDebt > 0) {
       print(`${G.flags.clinicDebt} missed messages, give or take. All about the same thing.`, 'system');
     }
@@ -5925,6 +5966,9 @@ function cmdGo(raw, obj) {
     print(`That place doesn't exist yet.`); return;
   }
   if (destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation) {
+    print(`You don't know where that is.`); return;
+  }
+  if (destKey === 'trap_house_outside' && !G.flags.knowsTrapHouse) {
     print(`You don't know where that is.`); return;
   }
 
@@ -8378,6 +8422,7 @@ function cmdExits() {
   // Direct exits
   for (const dest of Object.values(room.exits||{})) {
     if (dest === 'moonshiner_camp' && !G.flags.knowsStillLocation) continue;
+    if (dest === 'trap_house_outside' && !G.flags.knowsTrapHouse) continue;
     if (ROOMS[dest]) destinations.push(ROOMS[dest].name);
   }
 
@@ -8617,6 +8662,17 @@ function cmdStatus() {
   print(carryCapacityProse());
   if (G.stash.length) print(`You've got some things stashed back at your apartment.`);
   if (G.bikeStorage.length) print(`Your bike's saddlebag has some things in it too.`);
+
+  // Time of day — exact readout only if the player actually has a watch;
+  // otherwise just the ambient "what would a person standing here see" line.
+  printBlank();
+  const hasWatchForStatus = G.inventory.includes('cheap watch') || G.inventory.includes('watch');
+  if (hasWatchForStatus) {
+    print(`You check your watch. It's ${formatTime(G.displayTime)}${G.startDate ? ` on ${formatDate()}` : ''}.`);
+  } else {
+    const phase = getCurrentPhase(G.gameMinutes);
+    print(STATUS_AMBIENT_TIME[phase.key] || `Hard to say exactly what time it is.`);
+  }
 
   // ── DEV READOUT (cheatercheaterpumpkineater only) ──────────
   if (G.flags.devMode) {
@@ -9564,14 +9620,14 @@ function resolveBuckshotAttack(e, pDef) {
   const eDodge = getNpcDodgeBonus(e);
   const pelletHitChance = Math.max(0, pDef.accuracy * pAccMult * cravingPenalty * needDeb.outAcc - eDodge);
 
-  const totalDmg = pDef.damage[0] + Math.random() * (pDef.damage[1] - pDef.damage[0]);
+  const totalDmg = pDef.damage[0] + rrand() * (pDef.damage[1] - pDef.damage[0]);
   const perPellet = totalDmg / 9;
   const zoneDmg = {};
   let pelletsLanded = 0;
 
   for (let i = 0; i < 9; i++) {
-    if (Math.random() >= pelletHitChance) continue; // this pellet missed entirely
-    const roll = Math.random();
+    if (rrand() >= pelletHitChance) continue; // this pellet missed entirely
+    const roll = rrand();
     let cum = 0, zone = 'body';
     for (const [z, w] of BUCKSHOT_ZONE_WEIGHTS) {
       cum += w;
@@ -9596,7 +9652,7 @@ function resolveBuckshotAttack(e, pDef) {
   }
   e.lastHitZone = worstZone; // heaviest-hit region — used for the lethality roll
 
-  if (e.hp > 0 && Math.random() < (pDef.bleedChance || 0)) {
+  if (e.hp > 0 && rrand() < (pDef.bleedChance || 0)) {
     e.bleedSev = Math.max(e.bleedSev || 0, pDef.bleedSev || 1);
   }
 
@@ -9739,10 +9795,10 @@ function combatRound(playerTarget) {
     // Accuracy degrades slightly for later shots in a burst (recoil)
     const recoilPenalty = isBurst ? shot * 0.04 : 0;
     const shotAcc = Math.max(0, pAcc - recoilPenalty);
-    const pHits = Math.random() < shotAcc;
+    const pHits = rrand() < shotAcc;
 
     if (pHits) {
-      const dmg = Math.floor(pDef.damage[0] + Math.random() * (pDef.damage[1] - pDef.damage[0]));
+      const dmg = Math.floor(pDef.damage[0] + rrand() * (pDef.damage[1] - pDef.damage[0]));
       let armorRed = getNpcArmorReduction(e, playerTarget);
       if (baseWeaponName(pw) === 'blok19' && G.gunAmmoType === 'ap') {
         armorRed *= (1 - AP_ARMOR_IGNORE); // AP rounds punch through most of what armor would normally stop
@@ -9759,7 +9815,7 @@ function combatRound(playerTarget) {
       if ((isArmTarget || isLegTarget) && e.hp > 0) {
         const breakBase = tMod.breakChance || 0;
         const breakMult = (BREAK_MULTS[baseWeaponName(pw)] || 1.0);
-        if (isArmTarget && !e.brokenArm && Math.random() < breakBase * breakMult) {
+        if (isArmTarget && !e.brokenArm && rrand() < breakBase * breakMult) {
           e.brokenArm = true;
           brokeSomething = true;
           if (e.armed) {
@@ -9769,7 +9825,7 @@ function combatRound(playerTarget) {
           } else {
             print(`${e.name}'s arm gives out under the hit.`, 'failure');
           }
-        } else if (isLegTarget && !e.brokenLeg && Math.random() < breakBase * breakMult) {
+        } else if (isLegTarget && !e.brokenLeg && rrand() < breakBase * breakMult) {
           e.brokenLeg = true;
           brokeSomething = true;
           print(`${e.name}'s leg gives out. They're not steady anymore.`, 'failure');
@@ -9779,7 +9835,7 @@ function combatRound(playerTarget) {
       // Bleed — same combat-session-only rule as breaks. Enemy never carries
       // this outside the fight; there's nothing to clear because combatState
       // itself just goes away when the fight ends.
-      if (e.hp > 0 && Math.random() < (pDef.bleedChance || 0)) {
+      if (e.hp > 0 && rrand() < (pDef.bleedChance || 0)) {
         e.bleedSev = Math.max(e.bleedSev || 0, pDef.bleedSev || 1);
       }
 
@@ -9806,7 +9862,7 @@ function combatRound(playerTarget) {
   // supports. Only grants once per round (resolvingBonus guards re-granting
   // while the bonus action itself is being resolved).
   if (combatState && !resolvingBonus && drugMods.extraAttackChance > 0 &&
-      combatState.enemies.length > 0 && Math.random() < drugMods.extraAttackChance) {
+      combatState.enemies.length > 0 && rrand() < drugMods.extraAttackChance) {
     print(`Your heart's still hammering — everything's still moving in fast-forward. You've got time for one more move before this round is over.`, 'system');
     printBlank();
     combatState.bonusActionPending = true;
@@ -9852,10 +9908,11 @@ function applyEnemyBleedTicks() {
 function combatEnemyWentDown(e, forceLethal) {
   printBlank();
   const wDef = weaponDef(getPlayerWeapon());
-  const lethal = forceLethal || Math.random() < lethalChanceForZone(wDef, e.lastHitZone, e);
+  const lethal = forceLethal || rrand() < lethalChanceForZone(wDef, e.lastHitZone, e);
   if (lethal) {
     print(forceLethal ? `${e.name} goes down. Bled out.` : `${e.name} goes down. Dead.`, 'failure');
     G.flags[`killed_${e.name.replace(/\s+/g,'_')}`] = true;
+    logEvt('flag', `killed_${e.name.replace(/\s+/g,'_')}`, true);
     spawnBody(Object.keys(NPCS).find(k=>NPCS[k].name===e.name)||'default', e.name, G.location);
     combatState.karmaChange += combatState.playerInitiated ? -25 : -5;
     if (G.flags.combatPoliceProtected) {
@@ -9899,18 +9956,18 @@ function combatAllyTurn(ally) {
   if (combatState.enemies.length === 0) return;
 
   // Pick a random living enemy to target
-  const target = combatState.enemies[Math.floor(Math.random() * combatState.enemies.length)];
+  const target = combatState.enemies[Math.floor(rrand() * combatState.enemies.length)];
   const aDef   = weaponDef(ally.weapon);
   const tMod   = TARGET_MODS.body;
 
   // Scripted allies never miss (hitBonus >= 1 effectively caps accuracy)
   const hitBonus = ally.isScripted ? 1.0 : getNpcHitBonus(ally);
   const rawAcc   = ally.isScripted ? 1.0 : Math.min(1.0, aDef.accuracy * tMod.accuracyMult + hitBonus);
-  const hits     = Math.random() < rawAcc;
+  const hits     = rrand() < rawAcc;
 
   if (hits) {
     const armorMult = 1.0 - getNpcArmorReduction(target, 'body');
-    const dmg = Math.floor((aDef.damage[0] + Math.random() * (aDef.damage[1] - aDef.damage[0])) * armorMult);
+    const dmg = Math.floor((aDef.damage[0] + rrand() * (aDef.damage[1] - aDef.damage[0])) * armorMult);
     target.hp = Math.max(0, target.hp - dmg);
 
     // Flavor — ally attacks read differently from player attacks
@@ -9922,10 +9979,11 @@ function combatAllyTurn(ally) {
     print(allyHitLines[Math.floor(Math.random()*allyHitLines.length)]);
 
     if (target.hp <= 0) {
-      const lethal = Math.random() < lethalChanceForZone(aDef, 'body', target);
+      const lethal = rrand() < lethalChanceForZone(aDef, 'body', target);
       if (lethal) {
         print(`${target.name} goes down. Doesn't look like they're getting back up.`, 'failure');
         G.flags[`killed_${target.name.replace(/\s+/g,'_')}`] = true;
+        logEvt('flag', `killed_${target.name.replace(/\s+/g,'_')}`, true);
       } else {
         print(`${target.name} is down.`, 'system');
       }
@@ -9955,7 +10013,7 @@ function combatEnemyTurn(e) {
   if (!combatState) return;
 
   // Broken leg — 30% chance of losing the turn outright, checked fresh each time
-  if (e.brokenLeg && Math.random() < 0.30) {
+  if (e.brokenLeg && rrand() < 0.30) {
     print(`${e.name}'s leg buckles. They lose their footing and their turn.`, 'system');
     return;
   }
@@ -9979,25 +10037,25 @@ function combatEnemyTurn(e) {
   // Scripted allies can never actually be hit (dodge = 1.0), but enemies
   // still choose them as targets to keep the targeting logic clean.
   const potentialTargets = ['player', ...combatState.allies.map(a => a.id)];
-  const chosenTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+  const chosenTarget = potentialTargets[Math.floor(rrand() * potentialTargets.length)];
 
   // Zone distribution (same for both player and ally targets)
-  const eTargRoll = Math.random();
+  const eTargRoll = rrand();
   let eTarg;
   if (eTargRoll < 0.70) eTarg = 'body';
   else if (eTargRoll < 0.82) eTarg = 'head';
   else {
     const limbs = ['left_arm','right_arm','left_leg','right_leg'];
-    eTarg = limbs[Math.floor(Math.random() * limbs.length)];
+    eTarg = limbs[Math.floor(rrand() * limbs.length)];
   }
   const eMod = TARGET_MODS[eTarg];
   const eAcc = eDef.accuracy * eMod.accuracyMult;
 
   if (chosenTarget === 'player') {
     // Attack player
-    const eHits = Math.random() < eAcc;
+    const eHits = rrand() < eAcc;
     if (eHits) {
-      const eDmg = Math.floor(eDef.damage[0] + Math.random() * (eDef.damage[1] - eDef.damage[0]));
+      const eDmg = Math.floor(eDef.damage[0] + rrand() * (eDef.damage[1] - eDef.damage[0]));
       const drugModsIn = getDrugCombatMods();
       const armorMult  = 1.0 - getArmorReduction(eTarg);
       const needDebIn  = getNeedDebuffs().inDmg;
@@ -10005,7 +10063,7 @@ function combatEnemyTurn(e) {
       combatState.playerHp = Math.max(0, combatState.playerHp - eScaled);
 
       // Bleed
-      if (Math.random() < (eDef.bleedChance||0)) {
+      if (rrand() < (eDef.bleedChance||0)) {
         const newBleed = Math.max(G.bleed, eDef.bleedSev||1);
         if (newBleed > G.bleed) {
           G.bleed = newBleed;
@@ -10020,7 +10078,7 @@ function combatEnemyTurn(e) {
       if (isLimbTarget && combatState.playerHp > 0) {
         const breakBase = (TARGET_MODS[eTarg]?.breakChance || 0);
         const breakMult = (BREAK_MULTS[e.weapon] || 1.0);
-        if (Math.random() < breakBase * breakMult) {
+        if (rrand() < breakBase * breakMult) {
           applyLimbBreak(eTarg, e.name);
         }
       }
@@ -10044,10 +10102,10 @@ function combatEnemyTurn(e) {
     // Scripted allies dodge everything — purely comic/story outcome
     const dodgeBonus  = ally.isScripted ? 1.0 : getNpcDodgeBonus(ally);
     const effectiveAcc = ally.isScripted ? 0.0  : Math.max(0, eAcc - dodgeBonus);
-    const allyHit = Math.random() < effectiveAcc;
+    const allyHit = rrand() < effectiveAcc;
 
     if (allyHit) {
-      const aDmg = Math.floor(eDef.damage[0] + Math.random() * (eDef.damage[1] - eDef.damage[0]));
+      const aDmg = Math.floor(eDef.damage[0] + rrand() * (eDef.damage[1] - eDef.damage[0]));
       const allyArmorMult = 1.0 - getNpcArmorReduction(ally, eTarg);
       ally.hp = Math.max(0, ally.hp - Math.floor(aDmg * eMod.damageMult * allyArmorMult));
 
@@ -10783,7 +10841,7 @@ function combatFlee() {
   const anyGuns = enemies.some(e => e.weapon === 'blok19');
   const escapeChance = anyGuns ? (enemies.length > 1 ? 0.20 : 0.30)
                                 : (enemies.length > 1 ? 0.35 : 0.55);
-  if (Math.random() < escapeChance) {
+  if (rrand() < escapeChance) {
     print(`You break away and run. Nobody follows, or they can't.`);
     adjustKarma(combatState.karmaChange);
     combatState = null;
@@ -10794,7 +10852,7 @@ function combatFlee() {
     // All enemies get a free hit on the way out
     for (const e of enemies) {
       const eDef = weaponDef(e.weapon);
-      const dmg  = Math.floor(eDef.damage[0] + Math.random()*(eDef.damage[1]-eDef.damage[0]));
+      const dmg  = Math.floor(eDef.damage[0] + rrand()*(eDef.damage[1]-eDef.damage[0]));
       combatState.playerHp = Math.max(0, combatState.playerHp - dmg);
       print(buildAttackProse(e.weapon, 'body', true, combatState.playerHp<=0?'killing':'hitting', 'you', e.name));
       if (combatState.playerHp <= 0) {
@@ -10858,7 +10916,7 @@ async function combatEnd(result) {
     // Default outcome: same zone/weapon lethality roll enemies get. Non-lethal
     // means the clinic, not a free pass — you wake up with a bill.
     const pWDef = weaponDef(combatState.lastPlayerHitWeapon || 'fists');
-    const pLethal = Math.random() < lethalChanceForZone(pWDef, combatState.lastPlayerHitZone, { equippedArmor: G.equippedArmor });
+    const pLethal = rrand() < lethalChanceForZone(pWDef, combatState.lastPlayerHitZone, { equippedArmor: G.equippedArmor });
     if (!pLethal) {
       adjustKarma(karma);
       combatState = null;
@@ -12846,11 +12904,19 @@ function offerMission1() {
 // Locations with a ticketable car once the mission is active
 const TICKET_LOCATIONS = ['downtown','diner','pawn_shop','alley','park','courthouse'];
 
+// gas_station isn't its own ticket location — its flavor text describes the
+// same car that's "outside Wally's" from the downtown side, so it shares
+// downtown's flag/state rather than needing a duplicate car.
+function ticketAliasFor(loc) {
+  return loc === 'gas_station' ? 'downtown' : loc;
+}
+
 // Returns true if this room currently has an unticketed car (mission active, not yet written up)
 function hasTicketableCar(loc) {
   if (G.flags.policeMissionActive !== 'tickets') return false;
-  if (!TICKET_LOCATIONS.includes(loc)) return false;
-  return !G.flags[`ticketed_${loc}`];
+  const key = ticketAliasFor(loc);
+  if (!TICKET_LOCATIONS.includes(key)) return false;
+  return !G.flags[`ticketed_${key}`];
 }
 
 // Short flavor line for the hub-level look description, hinting which
@@ -12910,8 +12976,9 @@ function cmdTicket(obj) {
   if (!hasTicketableCar(G.location)) {
     print(`No cars worth ticketing here.`); return;
   }
+  const ticketKey = ticketAliasFor(G.location);
 
-  G.flags[`ticketed_${G.location}`] = true;
+  G.flags[`ticketed_${ticketKey}`] = true;
   G.flags.ticketsWritten = (G.flags.ticketsWritten||0) + 1;
 
   const writeUpLine = {
@@ -12922,7 +12989,7 @@ function cmdTicket(obj) {
     park: `You write it up. It feels good in a way that's probably not healthy.`,
     courthouse: `You write it up.`,
   };
-  print(writeUpLine[G.location] || `You write it up.`);
+  print(writeUpLine[ticketKey] || `You write it up.`);
 
   if (G.flags.ticketsWritten >= 3) {
     print(`That's three. Probably enough. Hed's not going to ask for more than that.`);
@@ -14174,8 +14241,27 @@ function talkNascar() {
   if (G.flags.alleyDealerGone) { print(`He's not here right now.`); return; }
   if (isNpcDead('alley_dealer')) { printNpcDeadLine('alley_dealer'); return; }
   if (G.flags.askingForFentanyl) { handleAlleyDealer(); return; }
-  print(`He glances at you. "What do you need." It's not a question.`);
-  print(`[ You can "barter" with him, or ask him about "fentanyl" / the heavy stuff. ]`, 'system');
+
+  const opts = [
+    { label: "Barter", action: () => {
+      const hasMoney = G.inventory.some(i => i.includes('$'));
+      if (G.flags[`killed_Nascar_Jacket`]) { printNpcDeadLine('alley_dealer'); return; }
+      if (!hasMoney) { print(`He looks at you. "Come back when you got something real."`); return; }
+      barterSession = { npcKey: 'alley_dealer', shop: NPC_SHOPS.alley_dealer };
+      if (!G.shopStock) buildShopStock();
+      if (!G.shopStock.alley_dealer) G.shopStock.alley_dealer = NPC_SHOPS.alley_dealer.sells;
+      printBarterMenu('alley_dealer', NPC_SHOPS.alley_dealer, G.shopStock.alley_dealer);
+    }},
+    { label: "Ask what he's got for the heavy stuff", action: () => {
+      G.flags.askingForFentanyl = true;
+      handleAlleyDealer();
+    }},
+    { label: "Ask about the jacket", once: true, action: () => {
+      print(`"NASCAR? Nah man, I just like the colors." He doesn't elaborate any further. You get the feeling that's the only answer you're ever getting out of him.`);
+    }},
+  ];
+
+  openDialogue('alley_dealer', `He glances at you. "What do you need." It's not a question.`, opts);
 }
 
 function handleAlleyDealer() {
@@ -14240,7 +14326,7 @@ function handleChuy() {
     print(`Chuy looks at you from the couch. He doesn't move.`);
     print(`"Nascar sent you?" He doesn't wait. "Sit down. What do you need."`);
     printBlank();
-    print(`He reaches under a couch cushion and comes up with a glass stem packed with something dark and sticky. He holds it out. Doesn't say anything. Just watches you.`);
+    print(`He reaches under a couch cushion and comes up with a sherm stick — a stained-looking cigarette, dipped in something that's turned the paper dark and waxy. He holds it out. Doesn't say anything. Just watches you.`);
     printBlank();
     print(`"Before we talk business," he finally says, "you're gonna smoke this. Or you're not a customer. You're a cop." He says it flat. Not a joke, or not obviously one.`, 'special');
     openDialogue('chuy', null, [
@@ -14293,7 +14379,7 @@ function chuyTestFinalDecline() {
 // player smoked immediately or caved partway through the escalation; only
 // the flavor line differs (handled by resolveChuyTest afterward).
 async function chuyBlackoutScene(pathType) {
-  print(`Chuy hands over the stem and a lighter. "There you go."`);
+  print(`Chuy hands over the sherm stick and a lighter. "There you go."`);
   await sleep(600);
   print(`It hits fast and wrong — heavier than anything you've smoked before. The room tilts.`, 'narration');
   await sleep(800);
@@ -14330,6 +14416,10 @@ function resolveChuyTest(pathType) {
   G.flags.chuyProloguesUnlocked = true;
   logEvt('flag', 'chuyTestResolved', true);
   logEvt('flag', 'chuyProloguesUnlocked', true);
+  // The test sequence ends here as a printed scene, not a live conversation —
+  // clear any leftover dialogue session so the player isn't stuck needing to
+  // "exit" a menu that isn't actually showing anymore.
+  dialogueSession = null;
   printBlank();
   print(`[ You can now ask Chuy about work. ]`, 'system');
 }
@@ -15154,6 +15244,7 @@ function initGameTime() {
   G.displayTime  = startMins;
   logEvt('flag','startDate', JSON.stringify(G.startDate));
   logEvt('flag','displayTime', G.displayTime);
+  logEvt('flag','gameMinutes', G.gameMinutes);
 }
 
 // Day/night phases — transitions fire a flavor line when crossed
@@ -15168,6 +15259,22 @@ const DAY_PHASES = [
   { start: 20, key: 'evening',    msg: `It's dark out now. The streetlights are on.` },
   { start: 22, key: 'latenight',  msg: `Late. The street is quiet. Most people are inside.` },
 ];
+
+// Ambient "what a person standing here would notice" time-of-day lines —
+// used by status when the player has no watch. Deliberately vague, no
+// numbers; distinct wording from the DAY_PHASES transition announcements so
+// repeated status checks don't feel like a rerun of the same line.
+const STATUS_AMBIENT_TIME = {
+  deepnight: `It's the dead of night out. Has to be pretty late, or pretty early, depending how you want to look at it.`,
+  predawn:   `The sky's just barely starting to lighten at the edges. Still mostly dark out.`,
+  dawn:      `The sun's just coming up. It must be pretty early.`,
+  morning:   `Good morning light out, sun's properly up. Not early anymore, but not late either.`,
+  midday:    `It's the middle of the day and the blinding desert sun is as oppressive as ever.`,
+  afternoon: `The afternoon light's gone golden. Later in the day than it feels.`,
+  dusk:      `The sun's going down. Evening's settling in.`,
+  evening:   `Fully dark out now, streetlights are on. Solidly nighttime.`,
+  latenight: `Late. The street's dead quiet out there. Has to be close to midnight, if not past it.`,
+};
 
 function getCurrentPhase(gameMinutes) {
   const hour = Math.floor((gameMinutes % 1440) / 60);
@@ -15237,10 +15344,8 @@ function cmdCheckWatch() {
     return;
   }
   // Show current display time (persists until next time-advancing action)
-  print(`You check your watch. It is ${formatTime(G.displayTime)}.`);
-  if (G.startDate) {
-    print(`${formatDate()}.`, 'system');
-  }
+  print(`A basic digital watch, plastic band, cracked face but still working. It shows the time and the date.`);
+  print(`You check your watch. It's ${formatTime(G.displayTime)}${G.startDate ? ` on ${formatDate()}` : ''}.`);
 }
 
 // Hook updateDisplayTime into advanceTime
@@ -15470,6 +15575,22 @@ async function replayCommands(lines) {
   G.isReplaying = true;
   print(`[ REPLAYING SAVE... ]`, 'system'); printDiv();
 
+  // Pre-populate the RNG queue from the whole log before running anything,
+  // so rrand() calls triggered synchronously during CMD processing have the
+  // correct historical value ready — the corresponding "EVT rng ..." line
+  // won't be reached by this loop until later, well after it's needed.
+  replayRngQueue = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const spaceIdx = line.indexOf(' ');
+    const prefix   = spaceIdx >= 0 ? line.slice(0, spaceIdx) : line;
+    const rest     = spaceIdx >= 0 ? line.slice(spaceIdx+1).trim() : '';
+    if (prefix === 'EVT' && rest.startsWith('rng ')) {
+      const v = parseFloat(rest.slice(4));
+      if (!isNaN(v)) replayRngQueue.push(v);
+    }
+  }
+
   for (const line of lines) {
     if (!line.trim()) continue;
     const spaceIdx = line.indexOf(' ');
@@ -15477,6 +15598,7 @@ async function replayCommands(lines) {
     const rest     = spaceIdx >= 0 ? line.slice(spaceIdx+1).trim() : '';
 
     if (prefix === 'EVT') {
+      if (rest.startsWith('rng ')) continue; // already queued above; rrand() re-logs on consumption
       // Apply engine event directly to state — no parsing, no printing
       applyEvt(rest);
       G.eventLog.push({ type: 'EVT', data: rest });
@@ -15597,7 +15719,7 @@ function startGame() {
   // ── END DEV CHEAT CODE ──────────────────────────────────────
 
   // Starting inventory — cash in pocket from the start
-  G.inventory = ['$47', 'lighter'];
+  G.inventory = ['$47', 'lighter', 'phone'];
   G.flags.tookCash = true; // mark as already taken so room desc doesn't show it
 
   printDiv();
@@ -15758,6 +15880,7 @@ cmdInput.addEventListener('keydown', e => {
   // alias body being defined, not a live chain separator, so pass it through whole.
   if (/^alias\s+\S+\s*=/i.test(val)) {
     handleCommand(val);
+    refreshContextButtons();
     return;
   }
   const chainSep = /\s*;\s*|\s+then\s+/;
@@ -15767,6 +15890,7 @@ cmdInput.addEventListener('keydown', e => {
     executeChain(chains);
   } else {
     handleCommand(val);
+    refreshContextButtons();
   }
 });
 
@@ -15795,6 +15919,7 @@ async function executeChain(commands) {
     await sleep(300);
     if (!interceptSpecial(cmd)) handleCommand(cmd);
   }
+  refreshContextButtons();
 }
 function quickCmd(cmd) {
   cmdInput.value=cmd;
@@ -15911,6 +16036,7 @@ const EXIT_SHORT_NAME = {
   police_station: 'POLICE DEPARTMENT', courthouse: 'COURTHOUSE', clinic: 'CLINIC',
   church: 'CHURCH', schoolhouse: 'SCHOOLHOUSE', post_office_exterior: 'POST OFFICE',
   nightclub: 'CLUB FENIX', park: 'PARK', diner: "LOU'S DINER", gas_station: "WALLY'S GAS",
+  trap_house_outside: 'HENDRIX STREET',
   pawn_shop: 'PAWN SHOP', bar: "ROSARIO'S BAR", pharmacy: 'PHARMACY', laundromat: 'LAUNDROMAT',
   motel: 'MOTEL', alley: 'THE ALLEY', auto_shop: "HECTOR'S AUTO", sneeds: "SNEED'S",
   trailer_park: 'TRAILER PARK', moonshiner_camp: "EARL'S OPERATION", woods: 'THE WOODS',
@@ -16153,6 +16279,7 @@ function refreshContextButtons() {
     const entries = Object.entries(exits)
       .filter(([exitKey, destKey]) => {
         if (destKey === 'moonshiner_camp' && !G.flags.knowsStillLocation) return false;
+        if (destKey === 'trap_house_outside' && !G.flags.knowsTrapHouse) return false;
         if (seenDest.has(destKey)) return false;
         seenDest.add(destKey);
         return true;
@@ -16212,6 +16339,12 @@ function refreshContextButtons() {
 
   const buttons = []; // {label, cmd}
 
+  // Dev button always comes first when devmode is on — easy to find, easy to
+  // avoid misclicking past it.
+  if (G.flags.devMode) {
+    buttons.push({ label: 'dev', action: () => { roomMenuMode = 'dev'; refreshContextButtons(); } });
+  }
+
   // Go / talk — expand into staged submenus rather than one button per option
   if (room && room.exits && Object.keys(room.exits).length) {
     buttons.push({ label: 'go', action: () => { roomMenuMode = 'go'; refreshContextButtons(); } });
@@ -16244,9 +16377,6 @@ function refreshContextButtons() {
   // Mail Hed's gift — post office, have the gift on you
   if (G.location === 'post_office_exterior' && G.inventory.includes("Hed's gift")) {
     buttons.push({ label: 'mail gift', cmd: 'mail gift' });
-  }
-  if (G.flags.devMode) {
-    buttons.push({ label: 'dev', action: () => { roomMenuMode = 'dev'; refreshContextButtons(); } });
   }
 
   const SEVERE = 65; // medium-high threshold, matches existing need warning tier
