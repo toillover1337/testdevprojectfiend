@@ -14247,6 +14247,7 @@ function talkNascar() {
       const hasMoney = G.inventory.some(i => i.includes('$'));
       if (G.flags[`killed_Nascar_Jacket`]) { printNpcDeadLine('alley_dealer'); return; }
       if (!hasMoney) { print(`He looks at you. "Come back when you got something real."`); return; }
+      dialogueSession = null;
       barterSession = { npcKey: 'alley_dealer', shop: NPC_SHOPS.alley_dealer };
       if (!G.shopStock) buildShopStock();
       if (!G.shopStock.alley_dealer) G.shopStock.alley_dealer = NPC_SHOPS.alley_dealer.sells;
@@ -14429,6 +14430,7 @@ function resolveChuyTest(pathType) {
 function handleChuyMain() {
   const opts = [
     { label: "Buy something", action: () => {
+      dialogueSession = null;
       barterSession = { npcKey: 'chuy', shop: NPC_SHOPS.chuy };
       if (!G.shopStock) buildShopStock();
       if (!G.shopStock.chuy) G.shopStock.chuy = NPC_SHOPS.chuy.sells;
